@@ -1,4 +1,3 @@
-import json
 from typing import Any
 
 from openrouter import OpenRouter
@@ -44,7 +43,6 @@ class Agent:
                 tools=tools,
                 stream=False,
             )
-            print(f"[info] Model response received.")
             print(
                 f"[info] Model response finish reason: {response.choices[0].finish_reason}, content: {response.choices[0].message.reasoning}"
             )

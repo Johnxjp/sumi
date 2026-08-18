@@ -21,7 +21,7 @@ def main():
     while query.lower() != "exit":
         query = input("Enter your query: ").strip()
         result = agent.run(query=query, tools=registry.tools)
-        print(f"RESULTS")
+        print("RESULTS")
         print(result)
 
 
