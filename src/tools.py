@@ -1,6 +1,6 @@
 import json
-import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -56,7 +56,7 @@ def grep(
     search_file_contents: bool = False,
 ):
     """
-    Searches for a pattern in the titles, contents, and metadata of files in the data directory.
+    Searches for a pattern in the titles and contents of files in the data directory.
 
     Args:
         pattern (str): The regex pattern to search for.
@@ -64,29 +64,54 @@ def grep(
         search_file_contents (bool): Whether to search in file contents (default: False).
 
     Returns:
-        list[str]: A list of file paths that match the search criteria.
+        list[str]: A list of file paths that match the search criteria. Capped at
+        50 matches per mode - narrow the pattern if an expected match is missing.
     """
-    results = []
-    regex = re.compile(pattern)
+    base_dir = Path(app_config.data_dir).resolve()
+    results: list[str] = []
+    seen: set[str] = set()
+    max_results_per_mode = 50
 
-    for root, dirs, files in os.walk(app_config.data_dir):
-        for file in files:
-            file_path = Path(root) / file
-            if not _has_file_permission(file_path):
+    def add_match(file_path: Path) -> bool:
+        rel = str(file_path.relative_to(base_dir))
+        if rel in seen:
+            return False
+        seen.add(rel)
+        results.append(rel)
+        return True
+
+    if search_title:
+        regex = re.compile(pattern)
+        added = 0
+        for file_path in base_dir.rglob("*"):
+            if (
+                file_path.is_file()
+                and regex.search(file_path.name)
+                and add_match(file_path)
+            ):
+                added += 1
+                if added >= max_results_per_mode:
+                    break
+
+    if search_file_contents:
+        proc = subprocess.run(
+            ["rg", "--json", "--", pattern, str(base_dir)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode not in (0, 1):  # 1 = ran fine, no matches
+            raise RuntimeError(f"rg failed: {proc.stderr.strip()}")
+
+        added = 0
+        for line in proc.stdout.splitlines():
+            event = json.loads(line)
+            if event["type"] != "match":
                 continue
-
-            if search_title and regex.search(file):
-                results.append(str(file_path.relative_to(app_config.data_dir)))
-                continue
-
-            if search_file_contents:
-                try:
-                    content = file_path.read_text()
-                    if regex.search(content):
-                        results.append(str(file_path.relative_to(app_config.data_dir)))
-                        continue
-                except Exception:
-                    pass  # Skip files that can't be read as text
+            if add_match(Path(event["data"]["path"]["text"])):
+                added += 1
+                if added >= max_results_per_mode:
+                    break
 
     return results
 
@@ -144,7 +169,8 @@ registry.register_tool(
             "Patterns should be provided as regular expressions. "
             "Only files are checked and not directories. "
             "By default only titles are searched. If you want to search file contents, set the 'search_file_contents' parameter to True. "
-            "Start with a title search because it's cheaper unless exhausted or requested otherwise by user."
+            "Start with a title search because it's cheaper unless exhausted or requested otherwise by user. "
+            "Results are capped at 50 matches per mode; narrow the pattern if an expected match is missing."
         ),
         "parameters": {
             "type": "object",
