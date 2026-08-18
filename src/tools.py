@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from pathlib import Path
@@ -16,10 +17,9 @@ def read_file(filename: str) -> str:
 
     This is limited to text based files e.g. .txt or .md, and not other types like binary or image.
     """
-    target = Path(app_config.data_dir, filename)
-    print(target)
+    target = Path(app_config.data_dir, filename).resolve()
     if not target.exists():
-        raise FileExistsError(f"{filename} not found")
+        raise FileNotFoundError(f"{filename} not found")
 
     if not _has_file_permission(target):
         raise ValueError(f"No permission to read {filename}")
@@ -33,7 +33,7 @@ def read_file(filename: str) -> str:
 
 
 def get_directory_listing(path: str) -> list[str]:
-    target = Path(app_config.data_dir, path)
+    target = Path(app_config.data_dir, path).resolve()
     if not target.exists():
         raise FileNotFoundError(f"Path does not exist: {path}")
 
@@ -55,12 +55,13 @@ def grep(
     pass
 
 
-def run_tool(name: str, arguments: dict) -> Any:
-    """This should use registry to find the tool and run it."""
+def run_tool(name: str, arguments: str) -> tuple[bool, Any]:
+    """Returns (success, result) where success is True if the tool ran successfully, and result is the tool's output or error message."""
     try:
-        return registry.call_tool(name, arguments)
+        arguments = json.loads(arguments)
+        return True, registry.call_tool(name, arguments)
     except Exception as e:
-        return f"Error {type(e).__name__}: {e}"
+        return False, f"{type(e).__name__}: {e}"
 
 
 def stringify_tool_result(tool_results: str | list[str]) -> str:

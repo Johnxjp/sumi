@@ -11,14 +11,17 @@ def main():
         api_key=app_config.api_key,
         model=app_config.model_name,
         system_prompt="You are a helpful assistant that can read files and list directories. "
-        "Use tools to search and answer user's questions. Root path is '.' and everything is relative to it. "
-        "You do not have permission to access files outside of the root path.",
+        "You have access to a directory of the user's notes."
+        "The root path is '.' and everything is relative to it. "
+        "You do not have permission to access files outside of the root path. "
+        "You can read text files but not binary files at this time.",
     )
 
     query = ""
     while query.lower() != "exit":
         query = input("Enter your query: ").strip()
         result = agent.run(query=query, tools=registry.tools)
+        print(f"RESULTS")
         print(result)
 
 

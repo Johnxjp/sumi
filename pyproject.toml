@@ -8,3 +8,8 @@ dependencies = [
     "openrouter>=1.1.62",
     "pydantic-settings>=2.15.0",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.3",
+]

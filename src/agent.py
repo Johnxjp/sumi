@@ -15,21 +15,34 @@ class Agent:
         self.system_prompt = system_prompt
         self.client = OpenRouter(api_key)
 
+        self.clear_conversation_history()
+
+    def clear_conversation_history(self):
+        self.conversation_history = []
+        self.conversation_history.append(
+            {"role": "system", "content": self.system_prompt}
+        )
+
     def run(
         self,
         query: str,
         tools: list[dict[str, Any]],
-        max_iterations: int = 5,
+        max_iterations: int = 10,
     ) -> str:
+        """
+
+        TODO: Need to handle dangling tool calls and errors so can continue to operate after restart and API won't fail
+        """
         turn = 0
-        messages = [{"role": "system", "content": self.system_prompt}]
-        messages += self.conversation_history
-        messages.append({"role": "user", "content": query})
+
+        self.conversation_history.append({"role": "user", "content": query})
 
         while turn < max_iterations:
-            print(messages)
             response = self.client.chat.send(
-                model=self.model, messages=messages, tools=tools, stream=False
+                model=self.model,
+                messages=self.conversation_history,
+                tools=tools,
+                stream=False,
             )
             print(f"[info] Model response received.")
             print(
@@ -38,33 +51,34 @@ class Agent:
 
             result = response.choices[0]
             if result.finish_reason == "stop":
-                messages.append(
-                    {"role": "assistant", "content": result.message.content}
-                )
+                self.conversation_history.append(result.message)
                 return result.message.content
             elif result.finish_reason == "tool_calls":
+                self.conversation_history.append(result.message)  # formatted correctly
                 for tool_call in result.message.tool_calls:
                     print(
                         f"[tool call] {tool_call.function.name}({tool_call.function.arguments})"
                     )
-                    arguments = json.loads(tool_call.function.arguments)
-                    result = run_tool(tool_call.function.name, arguments)
-                    print(
-                        f"[tool result] {result[:200]}{'...' if len(result) > 200 else ''}"
+                    is_success, result = run_tool(
+                        tool_call.function.name, tool_call.function.arguments
                     )
                     result_str = stringify_tool_result(result)
-                    is_error = result_str.startswith("Error")
-                    tool_result = json.dumps(
+                    self.conversation_history.append(
                         {
-                            "content": result_str,
-                            "is_error": is_error,
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": result_str
+                            if is_success
+                            else f"Error: {result_str}",
                         }
                     )
-                    messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": tool_result})
             elif result.finish_reason == "length":
-                # Compaction
+                # Basic Compaction
                 print(
                     "[info] Model response length exceeded. Compacting conversation history."
                 )
+                last_messages = self.conversation_history[-5:]  # Keep last 5 messages
+                self.clear_conversation_history()
+                self.conversation_history.extend(last_messages)
 
             turn += 1
