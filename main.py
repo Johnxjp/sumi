@@ -2,7 +2,7 @@
 
 from src.agent import Agent
 from src.config import app_config
-from src.tool_registry import registry
+from src.tools.registry import registry
 
 
 def main():

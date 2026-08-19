@@ -2,10 +2,9 @@ import json
 import re
 import subprocess
 from pathlib import Path
-from typing import Any
 
 from src.config import app_config
-from src.tool_registry import registry
+from src.tools.registry import registry
 
 
 def _has_file_permission(file_path: str) -> bool:
@@ -114,21 +113,6 @@ def grep(
                     break
 
     return results
-
-
-def run_tool(name: str, arguments: str) -> tuple[bool, Any]:
-    """Returns (success, result) where success is True if the tool ran successfully, and result is the tool's output or error message."""
-    try:
-        arguments = json.loads(arguments)
-        return True, registry.call_tool(name, arguments)
-    except Exception as e:
-        return False, f"{type(e).__name__}: {e}"
-
-
-def stringify_tool_result(tool_results: str | list[str]) -> str:
-    if isinstance(tool_results, str):
-        return tool_results
-    return "\n".join(tool_results)
 
 
 # NOTE: Anthropic uses 'input_schema' instead of 'parameters'
