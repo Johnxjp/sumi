@@ -24,7 +24,7 @@ def parse_args():
     parser.add_argument(
         "--filter_length",
         type=int,
-        default=150,
+        default=250,
         help="Minimum character length for notes to include.",
     )
     parser.add_argument(
