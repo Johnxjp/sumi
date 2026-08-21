@@ -16,6 +16,10 @@ class Indexer(ABC):
     def index(self, documents: list[str]):
         raise NotImplementedError("Subclasses must implement the index method.")
 
+    @abstractmethod
+    def search(self, query: str, top_k: int | None = None) -> list[dict[str, Any]]:
+        raise NotImplementedError("Subclasses must implement the search method.")
+
 
 class BreadBowlIndexer(Indexer):
     def __init__(self, api_base_url: str, api_key: str, index_id: str | None = None):
@@ -78,7 +82,7 @@ class BreadBowlIndexer(Indexer):
 
         return failed_documents
 
-    def search(self, query: str) -> list[dict[str, Any]]:
+    def search(self, query: str, top_k: int | None = None) -> list[dict[str, Any]]:
         """Search the index for documents matching the query."""
         if not self.index_id:
             raise ValueError("Index ID is not set. Please create an index first.")
@@ -88,12 +92,15 @@ class BreadBowlIndexer(Indexer):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-        data = {"query": query}
+        data: dict[str, Any] = {"query": query}
+        if top_k is not None:
+            data["limit"] = top_k
 
         response = requests.post(url, headers=headers, json=data)
 
         if response.status_code == 200:
-            return response.json().get("results", [])
+            results = response.json().get("results", [])
+            return results[:top_k] if top_k is not None else results
 
         raise ValueError(
             f"Failed to search index: {response.status_code} - {response.text}"
