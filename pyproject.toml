@@ -5,12 +5,23 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.141.1",
+    "google-genai>=2.19.0",
+    "langchain-text-splitters>=1.1.2",
     "openrouter>=1.1.62",
+    "pgvector>=0.5.0",
+    "psycopg[binary]>=3.3.4",
     "pydantic-settings>=2.15.0",
     "python-dotenv>=1.2.3",
     "requests>=2.34.2",
+    "sentence-transformers>=6.0.0",
     "tqdm>=4.70.0",
+    "uvicorn>=0.52.4",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
 
 [dependency-groups]
 dev = [
@@ -18,5 +29,6 @@ dev = [
     "matplotlib>=3.11.1",
     "numpy>=2.5.2",
     "pandas>=3.0.5",
+    "pytest>=9.1.1",
     "ruff>=0.16.3",
 ]
