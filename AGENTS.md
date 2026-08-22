@@ -8,16 +8,14 @@ outside the repo at `../data/notion-export-markdown` (configurable via
 
 Python 3.12, managed with [uv](https://docs.astral.sh/uv/).
 
-| Task | Command |
-|------|---------|
-| Install deps | `uv sync` |
-| Run all tests | `uv run pytest` |
-| Run one test | `uv run pytest tests/test_pooling.py::test_pool_merges_same_text_across_retrievers` |
-| Lint + format | `uv run ruff check . --fix && uv run ruff format .` |
-| Agent REPL | `uv run main.py` |
-| Ingest notes into pgvector | `uv run python -m scripts.ingest --embedder qwen` (or `gemini`; `--skip-existing` resumes) |
-| Annotation UI | `uv run uvicorn src.annotation.app:app --reload --port 8765` → http://localhost:8765 |
-| Generate eval sample/queries | `uv run python -m evals.generate_notes_sample`, then `uv run python -m evals.generate_queries` |
+- **Install deps:** `uv sync`
+- **Run all tests:** `uv run pytest`
+- **Run one test:** `uv run pytest tests/test_pooling.py::test_pool_merges_same_text_across_retrievers`
+- **Lint + format:** `uv run ruff check . --fix && uv run ruff format .`
+- **Agent REPL:** `uv run main.py`
+- **Ingest notes into pgvector:** `uv run python -m scripts.ingest --embedder qwen` (or `gemini`; `--skip-existing` resumes)
+- **Annotation UI:** `uv run uvicorn src.annotation.app:app --reload --port 8765` → http://localhost:8765
+- **Generate eval sample/queries:** `uv run python -m evals.generate_notes_sample`, then `uv run python -m evals.generate_queries`
 
 Scripts must be run from the repo root with `-m` (they use absolute `src.` imports).
 
@@ -31,6 +29,8 @@ Two separate pydantic-settings objects, both reading `.env`:
   breaks all imports of `app_config` at import time.
 - `evals/config.py` → settings for the eval-generation scripts (model, temperature,
   concurrency).
+
+`secrets/` and `.env` are gitignored; `annotations.json` is data, safe to commit.
 
 ## Architecture
 
@@ -70,8 +70,48 @@ per retriever — the endpoint awaits when needed.
 (via OpenRouter) to generate test queries with their source passages —
 the input dataset that the annotation tool then scores against.
 
-## Conventions
+## Coding Standards
 
+- **Always format and check Python files with ruff immediately after writing or
+  editing them:** `uv run ruff format <file_path>` and
+  `uv run ruff check --fix <file_path>`. Do this for every Python file you create
+  or modify, before moving on to the next step.
+- No `assert` in production code.
+- **Comment sparingly — code says *what*, comments say *why*.** Add a comment only
+  when the reasoning is non-obvious and cannot be carried by a clear name or the
+  code itself. Do not write narrating comments that restate the next line, do not
+  pad logic with multi-line prose, and do not repeat the same rationale at several
+  sites — put one concise note at the source of truth and let the others stand on
+  their own. Tests whose names already describe intent need no explanatory comment.
+  Reserve longer explanation for genuinely complex or non-obvious logic (e.g. a
+  security check whose threat model isn't apparent), and keep even that as tight
+  as it can be. Over-commenting is noise that ages badly and obscures the code it
+  wraps.
+- **Imports at top of file.** Valid exceptions: circular imports, lazy loading for
+  worker isolation, `TYPE_CHECKING` blocks.
+- **Name functions and methods with action verbs:** `get_`, `extract_`, `find_`,
+  `compute_`, `build_`, etc. Avoid noun-only names like `_serialize_keys` or
+  `_base_names` — they read as attributes, not callables. Predicates (`is_`,
+  `has_`) are the one exception.
+- **Avoid globals where possible,** favouring constants in local scope. The
+  exception is a module-scope constant used in multiple places. If a value is
+  configurable, it belongs in config.
 - Absolute imports (`from src.retrieval.indexer import ...`).
-- Tests live in `tests/`, pytest, logic-level (no HTTP/framework tests).
-- `secrets/` and `.env` are gitignored; `annotations.json` is data, safe to commit.
+
+## Testing Standards
+
+- **Target exactly 100% coverage of what the PR changes — no more, no less.**
+  Every changed or added behaviour must have a test; every test must fail without
+  the PR's change. Do not add tests for pre-existing logic, and do not test
+  standard-library or third-party functions. The exception is deliberate
+  behaviour or integration tests, which may cross those boundaries by design.
+- Tests live in `tests/` and test logic, not HTTP/framework plumbing.
+- Use pytest patterns, not `unittest.TestCase`.
+- Use `spec`/`autospec` when mocking.
+- Prefer `@mock.patch` decorators over `with mock.patch(...)` context managers.
+- Use `@pytest.mark.parametrize` for multiple similar inputs — consolidate tests
+  that only differ in input/expected values into a single parametrized test.
+- Tests that need a database run against local Postgres and skip themselves when
+  it isn't running (see `tests/test_pg_indexer.py`); never point them at the
+  real `DATABASE_URL`.
+- Do not assert on raw log text.
