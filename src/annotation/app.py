@@ -1,23 +1,21 @@
 import inspect
-from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from src.annotation.config import ANNOTATIONS_PATH, REPO_ROOT, RETRIEVER_CONFIGS
 from src.annotation.models import AnnotateRequest, SearchRequest, SearchResponse
 from src.annotation.pooling import pool_results
-from src.annotation.retrievers import load_retrievers
+from src.annotation.retrievers import build_retrievers
 from src.annotation.store import AnnotationStore
 
 load_dotenv()
 
-REPO_ROOT = Path(__file__).parents[2]
-
 app = FastAPI(title="RAG Annotation Tool")
 
-retrievers = load_retrievers(REPO_ROOT / "retrievers.json")
-store = AnnotationStore(REPO_ROOT / "annotations.json")
+retrievers = build_retrievers(RETRIEVER_CONFIGS, REPO_ROOT)
+store = AnnotationStore(ANNOTATIONS_PATH)
 
 
 @app.post("/api/search")

@@ -1,8 +1,6 @@
-import json
-
 import pytest
 
-from src.annotation.retrievers import RetrieverConfig, build_retriever, load_retrievers
+from src.annotation.retrievers import RetrieverConfig, build_retriever, build_retrievers
 from src.retrieval.embedder import BgeM3Embedder, QwenEmbedder
 from src.retrieval.indexer import PgVectorIndexer
 
@@ -37,9 +35,7 @@ def test_build_pgvector_rejects_unknown_embedder(tmp_path):
         build_retriever(config, tmp_path)
 
 
-def test_load_retrievers_rejects_duplicate_names(tmp_path):
-    path = tmp_path / "retrievers.json"
-    entry = {"name": "a", "type": "static", "chunks_file": "chunks.json"}
-    path.write_text(json.dumps({"retrievers": [entry, entry]}))
+def test_build_retrievers_rejects_duplicate_names(tmp_path):
+    config = RetrieverConfig(name="a", type="static", chunks_file="chunks.json")
     with pytest.raises(ValueError, match="Duplicate"):
-        load_retrievers(path)
+        build_retrievers([config, config], tmp_path)

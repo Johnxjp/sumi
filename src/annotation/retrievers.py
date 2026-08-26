@@ -81,13 +81,12 @@ def build_retriever(config: RetrieverConfig, base_dir: Path) -> Indexer:
     raise ValueError(f"Unknown retriever type '{config.type}' for '{config.name}'.")
 
 
-def load_retrievers(path: Path) -> dict[str, Indexer]:
-    with open(path, encoding="utf-8") as f:
-        raw = json.load(f)
+def build_retrievers(
+    configs: list[RetrieverConfig], base_dir: Path
+) -> dict[str, Indexer]:
     retrievers: dict[str, Indexer] = {}
-    for entry in raw["retrievers"]:
-        config = RetrieverConfig(**entry)
+    for config in configs:
         if config.name in retrievers:
             raise ValueError(f"Duplicate retriever name '{config.name}'.")
-        retrievers[config.name] = build_retriever(config, path.parent)
+        retrievers[config.name] = build_retriever(config, base_dir)
     return retrievers

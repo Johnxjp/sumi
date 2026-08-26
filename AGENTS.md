@@ -30,7 +30,10 @@ Two separate pydantic-settings objects, both reading `.env`:
 - `evals/config.py` → settings for the eval-generation scripts (model, temperature,
   concurrency).
 
-`secrets/` and `.env` are gitignored; `annotations.json` is data, safe to commit.
+`src/annotation/config.py` is plain Python, not pydantic-settings (no env vars):
+the retriever declarations and annotations-file path for the annotation tool.
+
+`secrets/` and `.env` are gitignored.
 
 ## Architecture
 
@@ -62,11 +65,11 @@ pgvector; **async** `index`/`search`, cosine similarity) and the legacy
 **3. Annotation tool** (`src/annotation/` + `static/`): FastAPI backend plus a
 single vanilla-JS page for labeling retrieval relevance (2 = highly relevant,
 1 = partially, 0 = not). A query fans out to every retriever declared in
-`retrievers.json` (types: `pgvector`, `static`, `breadbowl` — built in
+`config.py` (types: `pgvector`, `static`, `breadbowl` — built in
 `retrievers.py`); results are pooled and deduplicated by a hash of
 whitespace-normalized chunk text (`pooling.py`), and annotated **blind** — the UI
 never shows which retriever returned a chunk, but per-retriever rank/score
-provenance is stored for later metrics. Labels persist to `annotations.json`
+provenance is stored for later metrics. Labels persist to `../data/annotations.json`
 (`store.py`, atomic writes), keyed by case/whitespace-normalized query;
 re-running a query pre-fills existing scores. `search()` may be sync or async
 per retriever — the endpoint awaits when needed.
