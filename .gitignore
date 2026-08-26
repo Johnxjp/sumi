@@ -11,6 +11,14 @@ wheels/
 # Virtual environments
 .venv
 
+# local settings
+.vscode
+retrievers.json
+
 # secrets
 .env
 secrets/
+
+
+# large folders
+data

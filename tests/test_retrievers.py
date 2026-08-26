@@ -3,18 +3,25 @@ import json
 import pytest
 
 from src.annotation.retrievers import RetrieverConfig, build_retriever, load_retrievers
-from src.retrieval.embedder import QwenEmbedder
+from src.retrieval.embedder import BgeM3Embedder, QwenEmbedder
 from src.retrieval.indexer import PgVectorIndexer
 
 
-def test_build_pgvector_qwen(tmp_path):
+@pytest.mark.parametrize(
+    ("embedder_name", "embedder_cls", "table"),
+    [
+        ("qwen", QwenEmbedder, "chunks_qwen"),
+        ("bge-m3", BgeM3Embedder, "chunks_bge_m3"),
+    ],
+)
+def test_build_pgvector_local_embedder(tmp_path, embedder_name, embedder_cls, table):
     config = RetrieverConfig(
-        name="qwen", type="pgvector", embedder="qwen", table="chunks_qwen"
+        name=embedder_name, type="pgvector", embedder=embedder_name, table=table
     )
     retriever = build_retriever(config, tmp_path)
     assert isinstance(retriever, PgVectorIndexer)
-    assert retriever.table == "chunks_qwen"
-    assert isinstance(retriever.embedder, QwenEmbedder)
+    assert retriever.table == table
+    assert isinstance(retriever.embedder, embedder_cls)
     assert retriever.dimensions == retriever.embedder.output_dimensionality
 
 

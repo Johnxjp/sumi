@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from src.config import app_config
-from src.retrieval.embedder import GeminiEmbedder, QwenEmbedder
+from src.retrieval.embedder import BgeM3Embedder, GeminiEmbedder, QwenEmbedder
 from src.retrieval.indexer import BreadBowlIndexer, Indexer, PgVectorIndexer
 
 
@@ -58,6 +58,9 @@ def build_retriever(config: RetrieverConfig, base_dir: Path) -> Indexer:
         if config.embedder == "qwen":
             embedder = QwenEmbedder()
             dimensions = embedder.output_dimensionality
+        elif config.embedder == "bge-m3":
+            embedder = BgeM3Embedder()
+            dimensions = embedder.output_dimensionality
         elif config.embedder == "gemini":
             dimensions = app_config.embedding_dimensions
             embedder = GeminiEmbedder(
@@ -66,8 +69,8 @@ def build_retriever(config: RetrieverConfig, base_dir: Path) -> Indexer:
             )
         else:
             raise ValueError(
-                f"Retriever '{config.name}' requires embedder 'qwen' or 'gemini', "
-                f"got {config.embedder!r}."
+                f"Retriever '{config.name}' requires embedder 'qwen', 'bge-m3' "
+                f"or 'gemini', got {config.embedder!r}."
             )
         return PgVectorIndexer(
             app_config.database_url,

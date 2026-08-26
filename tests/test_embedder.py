@@ -1,10 +1,16 @@
 import asyncio
 from types import SimpleNamespace
+from unittest import mock
 
 import numpy as np
 import pytest
 
-from src.retrieval.embedder import GeminiEmbedder, QwenEmbedder
+from src.retrieval.embedder import (
+    BgeM3Embedder,
+    GeminiEmbedder,
+    QwenEmbedder,
+    SentenceTransformerEmbedder,
+)
 
 
 class FakeModels:
@@ -87,9 +93,20 @@ def test_embed_query_applies_template_and_returns_single_vector():
     assert isinstance(vector[0], float)
 
 
+class FakeTokenizer:
+    """Whitespace tokenizer: one word, one token; the words are the ids."""
+
+    def encode(self, text, add_special_tokens=False):
+        return text.split()
+
+    def decode(self, ids):
+        return " ".join(ids)
+
+
 class FakeSentenceTransformer:
     def __init__(self):
         self.calls = []
+        self.tokenizer = FakeTokenizer()
 
     def encode(self, texts, normalize_embeddings=False, prompt_name=None):
         self.calls.append(SimpleNamespace(texts=texts, prompt_name=prompt_name))
@@ -98,6 +115,13 @@ class FakeSentenceTransformer:
 
 def make_qwen_embedder() -> tuple[QwenEmbedder, FakeSentenceTransformer]:
     embedder = QwenEmbedder()
+    fake = FakeSentenceTransformer()
+    embedder._model = fake
+    return embedder, fake
+
+
+def make_bge_embedder(**kwargs) -> tuple[BgeM3Embedder, FakeSentenceTransformer]:
+    embedder = BgeM3Embedder(**kwargs)
     fake = FakeSentenceTransformer()
     embedder._model = fake
     return embedder, fake
@@ -128,6 +152,111 @@ def test_qwen_empty_documents_skip_model():
 def test_qwen_construction_does_not_load_model():
     embedder = QwenEmbedder()
     assert embedder._model is None
+
+
+def test_bge_documents_encoded_verbatim_without_prompt():
+    embedder, fake = make_bge_embedder()
+    vectors = asyncio.run(embedder.embed_documents(["doc one", "much longer doc"]))
+    assert fake.calls[0].texts == ["doc one", "much longer doc"]
+    assert fake.calls[0].prompt_name is None
+    assert vectors == [[7.0, 0.0], [15.0, 0.0]]
+
+
+def test_bge_query_encoded_verbatim_without_prompt():
+    embedder, fake = make_bge_embedder()
+    vector = asyncio.run(embedder.embed_query("what is sleep?"))
+    assert fake.calls[0].texts == ["what is sleep?"]
+    assert fake.calls[0].prompt_name is None
+    assert vector == [14.0, 0.0]
+
+
+def test_bge_empty_documents_skip_model():
+    embedder, fake = make_bge_embedder()
+    assert asyncio.run(embedder.embed_documents([])) == []
+    assert fake.calls == []
+
+
+def test_bge_construction_does_not_load_model():
+    embedder = BgeM3Embedder()
+    assert embedder._model is None
+
+
+def inject_fake_model(embedder):
+    embedder._model = FakeSentenceTransformer()
+
+
+@mock.patch.object(
+    SentenceTransformerEmbedder,
+    "_load_model",
+    autospec=True,
+    side_effect=inject_fake_model,
+)
+def test_token_primitives_load_model_lazily(mock_load):
+    embedder = BgeM3Embedder()
+    assert embedder._count_tokens("two words") == 2
+    mock_load.assert_called_once()
+
+
+# max_seq_length=20 leaves a 4-token budget after the 16-token headroom.
+@pytest.mark.parametrize(
+    ("strategy", "text", "encoded", "expected"),
+    [
+        ("truncate", "w1 w2 w3 w4 w5 w6", ["w1 w2 w3 w4"], [[11.0, 0.0]]),
+        ("barbell", "w1 w2 w3 w4 w5 w6", ["w1 w2 w5 w6"], [[11.0, 0.0]]),
+        ("chunking-average", "a b. c d. e f.", ["a b. c d.", "e f."], [[6.5, 0.0]]),
+        (
+            "chunking-average",
+            "w1 w2 w3 w4 w5 w6",
+            ["w1 w2 w3 w4", "w5 w6"],
+            [[8.0, 0.0]],
+        ),
+    ],
+)
+def test_overflow_strategies_use_model_tokenizer(strategy, text, encoded, expected):
+    embedder, fake = make_bge_embedder(max_seq_length=20, overflow_strategy=strategy)
+    vectors = asyncio.run(embedder.embed_documents([text]))
+    assert fake.calls[0].texts == encoded
+    assert vectors == expected
+
+
+def test_pool_vectors_rejects_non_matrix_input():
+    embedder = BgeM3Embedder()
+    with pytest.raises(ValueError, match="matrix"):
+        embedder._pool_vectors([1.0, 2.0])
+
+
+def test_overflow_leaves_under_budget_texts_untouched():
+    embedder, fake = make_bge_embedder(max_seq_length=20)
+    vectors = asyncio.run(embedder.embed_documents(["a b", "a b. c d. e f."]))
+    assert fake.calls[0].texts == ["a b", "a b. c d.", "e f."]
+    assert vectors == [[3.0, 0.0], [6.5, 0.0]]
+
+
+# Gemini has no local tokenizer, so budgets use the 3 chars/token proxy:
+# a 4-token budget is 12 chars.
+@pytest.mark.parametrize(
+    ("strategy", "encoded", "expected"),
+    [
+        ("truncate", ["title: T | text: aaaa bbbb. c"], [[29.0]]),
+        ("barbell", ["title: T | text: aaaa b  ffff."], [[30.0]]),
+        (
+            "chunking-average",
+            [
+                "title: T | text: aaaa bbbb.",
+                "title: T | text: cccc dddd.",
+                "title: T | text: eeee ffff.",
+            ],
+            [[27.0]],
+        ),
+    ],
+)
+def test_gemini_overflow_uses_char_proxy_and_keeps_titles(strategy, encoded, expected):
+    embedder, fake = make_embedder(max_seq_length=20, overflow_strategy=strategy)
+    vectors = asyncio.run(
+        embedder.embed_documents(["aaaa bbbb. cccc dddd. eeee ffff."], titles=["T"])
+    )
+    assert fake.calls[0].texts == encoded
+    assert vectors == expected
 
 
 def test_embed_waits_out_rate_limit_and_retries(monkeypatch):
