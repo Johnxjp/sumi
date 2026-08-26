@@ -1,9 +1,9 @@
 import argparse
+import os
 from pathlib import Path
 from uuid import uuid4
 
 from dotenv import load_dotenv
-import os
 
 load_dotenv()
 
@@ -55,7 +55,9 @@ def index_command(args):
     for file in documents_filepaths[:5]:
         with open(file, encoding="utf-8") as f:
             text = f.read().strip()
-            documents.append(Document(id=str(uuid4()), text=text, metadata={}))
+            documents.append(
+                Document(id=str(uuid4()), text=text, source=str(file), metadata={})
+            )
 
     failed_documents = indexer.index(documents)
     for doc_id, error in failed_documents:
