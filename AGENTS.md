@@ -45,13 +45,18 @@ directory — `read_file`, directory listing, ripgrep search — sandboxed to
 **2. Retrieval pipeline** (`src/retrieval/`): the ingestion flow is
 `cleaner.clean_text` (NFKC/whitespace normalization) → `chunker.chunk_text`
 (recursive splitter, 2000-char max / 200 min / 50 overlap) → an `Embedder` →
-an `Indexer`. Two `Embedder` implementations in `embedder.py`: `GeminiEmbedder`
-(API, 768-dim, free-tier rate-limit handling) and `QwenEmbedder` (local
-sentence-transformers, 1024-dim, lazy model load). Two `Indexer` implementations
-in `indexer.py`: `PgVectorIndexer` (Postgres + pgvector; **async** `index`/`search`,
-cosine similarity) and the legacy `BreadBowlIndexer` (external HTTP API, sync).
-Each embedder gets its own table — `chunks` (gemini) and `chunks_qwen` — created
-by `ensure_schema()`. Chunk ids are `"{source}#{chunk_index}"`, so re-running
+an `Indexer`. Three `Embedder` implementations in `embedder.py`: `GeminiEmbedder`
+(API, 768-dim, free-tier rate-limit handling) plus `QwenEmbedder` and
+`BgeM3Embedder` (local sentence-transformers, 1024-dim, lazy model load, shared
+`SentenceTransformerEmbedder` base). Every embedder takes `max_seq_length`
+(tokens) and an `overflow_strategy` (`chunking-average` default / `truncate` /
+`barbell`) on init; over-length inputs are handled in the `Embedder` base class,
+measured with the model tokenizer when available, else a ~3 chars/token proxy.
+Two `Indexer` implementations in `indexer.py`: `PgVectorIndexer` (Postgres +
+pgvector; **async** `index`/`search`, cosine similarity) and the legacy
+`BreadBowlIndexer` (external HTTP API, sync). Each embedder gets its own table —
+`chunks` (gemini), `chunks_qwen` and `chunks_bge_m3` — created by
+`ensure_schema()`. Chunk ids are `"{source}#{chunk_index}"`, so re-running
 `scripts/ingest.py` upserts in place.
 
 **3. Annotation tool** (`src/annotation/` + `static/`): FastAPI backend plus a
