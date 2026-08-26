@@ -13,6 +13,7 @@ Python 3.12, managed with [uv](https://docs.astral.sh/uv/).
 - **Run one test:** `uv run pytest tests/test_pooling.py::test_pool_merges_same_text_across_retrievers`
 - **Lint + format:** `uv run ruff check . --fix && uv run ruff format .`
 - **Agent REPL:** `uv run main.py`
+- **Gmail MCP server (optional, for Gmail tools):** `./scripts/run_gmail_mcp.sh`, then verify with `uv run python -m scripts.gmail_smoke`
 - **Ingest notes into pgvector:** `uv run python -m scripts.ingest --embedder qwen` (or `gemini`; `--skip-existing` resumes)
 - **Annotation UI:** `uv run uvicorn src.annotation.app:app --reload --port 8765` → http://localhost:8765
 - **Generate eval sample/queries:** `uv run python -m evals.generate_notes_sample`, then `uv run python -m evals.generate_queries`
@@ -44,6 +45,16 @@ running an OpenRouter tool-calling agent. Its tools (`src/tools/file.py`,
 registered via `src/tools/registry.py`) are filesystem reads over the notes
 directory — `read_file`, directory listing, ripgrep search — sandboxed to
 `data_dir`. It does **not** yet use the vector retrieval stack.
+
+Read-only Gmail tools are added at startup via MCP: `src/mcp_client.py` is a
+generic sync client for any streamable-HTTP MCP server (provider-agnostic, as is
+`src/tools/mcp.py`, which discovers tools, filters them against an allowlist,
+and registers them); `src/tools/gmail.py` wires it to a locally-run
+[workspace-mcp](https://github.com/taylorwilsdon/google_workspace_mcp) server
+(`scripts/run_gmail_mcp.sh`, pinned version, `--read-only`, Google OAuth handled
+server-side with only the `gmail.readonly` scope). If the server isn't running,
+the REPL degrades gracefully to filesystem tools only. Adding another provider
+(e.g. Outlook) = a new allowlist + one `register_mcp_tools` call.
 
 **2. Retrieval pipeline** (`src/retrieval/`): the ingestion flow is
 `cleaner.clean_text` (NFKC/whitespace normalization) → `chunker.chunk_text`

@@ -87,7 +87,7 @@ class Embedder(ABC):
 
     def _fit_text(self, text: str) -> list[str]:
         """
-        Preprocess text longer than sequence length according to 
+        Preprocess text longer than sequence length according to
         overflow strategy before encoding.
         """
         # Headroom for special tokens and the templates subclasses wrap around

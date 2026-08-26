@@ -8,6 +8,7 @@ dependencies = [
     "fastapi>=0.141.1",
     "google-genai>=2.19.0",
     "langchain-text-splitters>=1.1.2",
+    "mcp>=2.1.1",
     "openrouter>=1.1.62",
     "pgvector>=0.5.0",
     "psycopg[binary]>=3.3.4",

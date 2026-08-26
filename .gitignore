@@ -18,8 +18,10 @@ retrievers.json
 # secrets
 .env
 secrets/
+.credentials/
 
 
 # Local folders
-data
-docssecrets
+data/
+docs/
+secrets/

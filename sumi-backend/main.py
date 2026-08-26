@@ -1,12 +1,17 @@
 """Main agent loop"""
 
+import src.tools.file  # noqa: F401  # registers the filesystem tools on import
 from src.agent import Agent
 from src.config import app_config
+from src.tools.gmail import register_gmail_tools
 from src.tools.registry import registry
 
 
 def main():
     print("Hello from sumi-backend!")
+    n_gmail_tools = register_gmail_tools()
+    if n_gmail_tools:
+        print(f"[info] Registered {n_gmail_tools} read-only Gmail tools.")
     agent = Agent(
         api_key=app_config.api_key,
         model=app_config.model_name,
@@ -14,7 +19,9 @@ def main():
         "You have access to a directory of the user's notes."
         "The root path is '.' and everything is relative to it. "
         "You do not have permission to access files outside of the root path. "
-        "You can read text files but not binary files at this time.",
+        "You can read text files but not binary files at this time. "
+        "Read-only Gmail tools (search_gmail_messages, get_gmail_message_content, "
+        "and similar) may also be available.",
     )
 
     query = ""

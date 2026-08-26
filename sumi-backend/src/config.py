@@ -37,6 +37,22 @@ class Settings(BaseSettings):
         default="",
         description="BreadBowl API key. Set via BREADBOWL_API_KEY environment variable.",
     )
+    gmail_mcp_url: str = Field(
+        default="http://localhost:8000/mcp",
+        description="Endpoint of the locally-run workspace-mcp server (scripts/run_gmail_mcp.sh).",
+    )
+    google_oauth_client_id: str = Field(
+        default="",
+        description="OAuth web-app client ID for the workspace-mcp server. Set via GOOGLE_OAUTH_CLIENT_ID.",
+    )
+    google_oauth_client_secret: str = Field(
+        default="",
+        description="OAuth web-app client secret for the workspace-mcp server. Set via GOOGLE_OAUTH_CLIENT_SECRET.",
+    )
+    user_google_email: str = Field(
+        default="",
+        description="Gmail address the workspace-mcp server acts on. Set via USER_GOOGLE_EMAIL.",
+    )
 
 
 app_config = Settings()
