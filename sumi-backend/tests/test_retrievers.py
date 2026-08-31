@@ -3,6 +3,7 @@ import pytest
 from src.annotation.retrievers import RetrieverConfig, build_retriever, build_retrievers
 from src.retrieval.embedder import BgeM3Embedder, QwenEmbedder
 from src.retrieval.indexer import PgVectorIndexer
+from src.retrieval.lexical import PgFtsIndexer
 
 
 @pytest.mark.parametrize(
@@ -39,3 +40,15 @@ def test_build_retrievers_rejects_duplicate_names(tmp_path):
     config = RetrieverConfig(name="a", type="static", chunks_file="chunks.json")
     with pytest.raises(ValueError, match="Duplicate"):
         build_retrievers([config, config], tmp_path)
+
+
+def test_build_fts_retriever(tmp_path):
+    config = RetrieverConfig(name="fts", type="fts", table="chunks_fts")
+    retriever = build_retriever(config, tmp_path)
+    assert isinstance(retriever, PgFtsIndexer)
+    assert retriever.table == "chunks_fts"
+
+
+def test_build_fts_requires_table(tmp_path):
+    with pytest.raises(ValueError, match="table"):
+        build_retriever(RetrieverConfig(name="fts", type="fts"), tmp_path)

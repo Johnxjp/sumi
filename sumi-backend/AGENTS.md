@@ -17,6 +17,15 @@ Python 3.12, managed with [uv](https://docs.astral.sh/uv/).
 - **Ingest notes into pgvector:** `uv run python -m scripts.ingest --embedder qwen` (or `gemini`; `--skip-existing` resumes)
 - **Annotation UI:** `uv run uvicorn src.annotation.app:app --reload --port 8765` → http://localhost:8765
 - **Generate eval sample/queries:** `uv run python -m evals.generate_notes_sample`, then `uv run python -m evals.generate_queries`
+- **Build the lexical index:** `uv run python -m scripts.build_fts` (after ingest)
+- **Search the notes:** `uv run python -m scripts.search "your query" [--top-k 10]`
+- **Retrieval evals:** `uv run python -m evals.retrieval.run <experiment>` (see
+  `evals/retrieval/experiments.py`; `--annotated-only` skips the generated set),
+  then `uv run python -m evals.retrieval.compare` and
+  `uv run python -m evals.retrieval.diagnose <run_id> [<other_run_id>]`.
+  `uv run python -m evals.retrieval.selftest` checks the judgment join before you
+  trust a number; `make_split` regenerates the train/val split (`--force` only if
+  you accept that every recorded run becomes incomparable).
 
 Scripts must be run from the repo root with `-m` (they use absolute `src.` imports).
 
@@ -38,7 +47,7 @@ the retriever declarations and annotations-file path for the annotation tool.
 
 ## Architecture
 
-Four loosely-coupled parts:
+Five loosely-coupled parts:
 
 **1. Agent CLI** (`main.py` → `src/agent.py` + `src/tools/`): a terminal REPL
 running an OpenRouter tool-calling agent. Its tools (`src/tools/file.py`,
@@ -69,9 +78,25 @@ measured with the model tokenizer when available, else a ~3 chars/token proxy.
 Two `Indexer` implementations in `indexer.py`: `PgVectorIndexer` (Postgres +
 pgvector; **async** `index`/`search`, cosine similarity) and the legacy
 `BreadBowlIndexer` (external HTTP API, sync). Each embedder gets its own table —
-`chunks` (gemini), `chunks_qwen` and `chunks_bge_m3` — created by
-`ensure_schema()`. Chunk ids are `"{source}#{chunk_index}"`, so re-running
-`scripts/ingest.py` upserts in place.
+`chunks` (gemini, stale — different chunking, never used), `chunks_qwen` and
+`chunks_bge_m3` — created by `ensure_schema()`. Chunk ids are
+`"{source}#{chunk_index}"`, so re-running `scripts/ingest.py` upserts in place,
+**and the same id means the same chunk in every table** — which is what lets
+fusion deduplicate across arms and lets judgments join by id.
+
+Query time is `retrieve.py`: `HybridRetriever` runs the arms declared in
+`search_config.ACTIVE_CONFIG` concurrently and merges them with `fusion.fuse_rrf`
+(reciprocal rank fusion, per-arm weights, `"arms"` provenance on each row); a
+single-arm config skips fusion and keeps the arm's own scores. An arm is either
+dense (a `PgVectorIndexer` — `build_arm_indexer` refuses to pair an embedder with
+another embedder's table) or lexical (`lexical.PgFtsIndexer` over `chunks_fts`,
+built by `scripts/build_fts.py` from an existing dense table). The lexical arm
+ranks by IDF-weighted term coverage rather than `ts_rank_cd` alone, and drops
+terms occurring in more than `max_df` of chunks — without both, question-shaped
+queries either match nothing (AND semantics) or rank by whichever common word
+repeats most. `TitlePrefixEmbedder` (an available lever, `--title-prefix` on
+ingest, writes to a `*_title` table) embeds documents with their note title
+prepended while leaving the stored chunk text — and therefore ids — untouched.
 
 **3. Annotation tool** (`src/annotation/` + `static/`): FastAPI backend plus a
 single vanilla-JS page for labeling retrieval relevance (2 = highly relevant,

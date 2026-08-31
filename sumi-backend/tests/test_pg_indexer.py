@@ -166,6 +166,25 @@ def test_reindexing_same_id_upserts(test_db_url):
     assert results[0]["text"] == "all about bananas"
 
 
+def test_search_deeper_than_the_hnsw_default_returns_every_row(test_db_url):
+    # Enough rows that the planner prefers the HNSW index, whose scan visits
+    # hnsw.ef_search (default 40) candidates and would otherwise truncate.
+    texts = [f"doc {i}" for i in range(600)]
+    vectors = {text: [1.0, i / 600, (i % 7) / 7] for i, text in enumerate(texts)}
+    vectors["query"] = [1.0, 0.0, 0.0]
+    indexer = make_indexer(test_db_url, vectors)
+    asyncio.run(
+        indexer.index(
+            [
+                Document(id=f"d{i}", text=text, source="notes/s.md", metadata={})
+                for i, text in enumerate(texts)
+            ]
+        )
+    )
+
+    assert len(asyncio.run(indexer.search("query", top_k=60))) == 60
+
+
 def test_metadata_round_trip(test_db_url):
     indexer = make_indexer(test_db_url, {"all about apples": [1.0, 0.0, 0.0]})
     metadata = {"title": "Apples", "tags": ["fruit", "notes"]}
