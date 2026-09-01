@@ -1,3 +1,5 @@
+"""Build the retriever backends the annotation tool pools over."""
+
 import json
 import os
 from pathlib import Path
@@ -8,6 +10,7 @@ from pydantic import BaseModel
 from src.config import app_config
 from src.retrieval.embedder import BgeM3Embedder, GeminiEmbedder, QwenEmbedder
 from src.retrieval.indexer import BreadBowlIndexer, Indexer, PgVectorIndexer
+from src.retrieval.lexical import PgFtsIndexer
 
 
 class RetrieverConfig(BaseModel):
@@ -52,6 +55,10 @@ def build_retriever(config: RetrieverConfig, base_dir: Path) -> Indexer:
         if not config.chunks_file:
             raise ValueError(f"Retriever '{config.name}' requires a chunks_file.")
         return StaticRetriever(base_dir / config.chunks_file)
+    if config.type == "fts":
+        if not config.table:
+            raise ValueError(f"Retriever '{config.name}' requires a table.")
+        return PgFtsIndexer(app_config.database_url, table=config.table)
     if config.type == "pgvector":
         if not config.table:
             raise ValueError(f"Retriever '{config.name}' requires a table.")

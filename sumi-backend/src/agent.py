@@ -1,3 +1,5 @@
+"""OpenRouter tool-calling agent that drives the terminal REPL."""
+
 from typing import Any
 
 from openrouter import OpenRouter

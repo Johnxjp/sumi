@@ -1,3 +1,5 @@
+"""Application settings from .env. Every .env variable needs a field here."""
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

@@ -1,3 +1,5 @@
+"""Embedding models (Gemini, Qwen, BGE-M3) with shared over-length handling."""
+
 import asyncio
 import math
 import re
@@ -171,6 +173,32 @@ class Embedder(ABC):
     def _split_tokens(self, text: str, k: int) -> list[str]:
         chars = k * CHARS_PER_TOKEN
         return [text[i : i + chars] for i in range(0, len(text), chars)]
+
+
+class TitlePrefixEmbedder:
+    """Embeds documents with their note title prepended, queries unchanged.
+
+    Wraps any Embedder rather than subclassing one, so it composes with all of
+    them. Only the embedded string carries the title: the chunk text stored in
+    the index, and therefore chunk ids and text hashes, is untouched.
+    """
+
+    def __init__(self, inner: Embedder):
+        self.inner = inner
+        self.output_dimensionality = inner.output_dimensionality
+
+    async def embed_documents(
+        self, texts: list[str], titles: list[str] | None = None
+    ) -> list[list[float]]:
+        if titles is None:
+            return await self.inner.embed_documents(texts)
+        prefixed = [
+            f"{title}\n\n{text}" for title, text in zip(titles, texts, strict=True)
+        ]
+        return await self.inner.embed_documents(prefixed, titles=titles)
+
+    async def embed_query(self, text: str) -> list[float]:
+        return await self.inner.embed_query(text)
 
 
 class GeminiEmbedder(Embedder):

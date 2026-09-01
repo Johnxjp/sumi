@@ -1,3 +1,5 @@
+"""Stores that index and search embedded chunks: pgvector and legacy BreadBowl."""
+
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -200,13 +202,19 @@ class PgVectorIndexer(Indexer):
     ) -> list[dict[str, Any]]:
         """Return the closest chunks by cosine similarity, best first."""
         query_vector = Vector(await self.embedder.embed_query(query))
+        limit = top_k if top_k is not None else 10
         async with await self._connect() as conn:
+            # The HNSW scan visits ef_search candidates (default 40), so
+            # without raising it a deeper search silently returns fewer rows.
+            await conn.execute(
+                sql.SQL("SET hnsw.ef_search = {}").format(sql.Literal(max(limit, 40)))
+            )
             cursor = await conn.execute(
                 sql.SQL(
                     "SELECT id, text, source, metadata, 1 - (embedding <=> %s) AS score "
                     "FROM {} ORDER BY embedding <=> %s LIMIT %s"
                 ).format(sql.Identifier(self.table)),
-                (query_vector, query_vector, top_k if top_k is not None else 10),
+                (query_vector, query_vector, limit),
             )
             rows = await cursor.fetchall()
         return [

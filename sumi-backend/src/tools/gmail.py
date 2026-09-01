@@ -1,3 +1,5 @@
+"""Register read-only Gmail tools from a locally-run workspace-mcp server."""
+
 from src.config import app_config
 from src.mcp_client import McpClient
 from src.tools.mcp import register_mcp_tools

@@ -1,3 +1,5 @@
+"""Split cleaned note text into overlapping chunks."""
+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 

@@ -1,3 +1,5 @@
+"""Request and response models for the annotation API."""
+
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field

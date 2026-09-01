@@ -1,3 +1,5 @@
+"""Pool results from several retrievers, deduplicated by normalized chunk text."""
+
 import hashlib
 from typing import Any
 

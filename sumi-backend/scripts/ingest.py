@@ -17,7 +17,12 @@ from tqdm import tqdm
 from src.config import app_config
 from src.retrieval.chunker import chunk_text
 from src.retrieval.cleaner import clean_text
-from src.retrieval.embedder import BgeM3Embedder, GeminiEmbedder, QwenEmbedder
+from src.retrieval.embedder import (
+    BgeM3Embedder,
+    GeminiEmbedder,
+    QwenEmbedder,
+    TitlePrefixEmbedder,
+)
 from src.retrieval.indexer import Document, PgVectorIndexer
 
 
@@ -59,6 +64,11 @@ async def main() -> None:
         action="store_true",
         help="Skip chunks whose id is already in the table (resume after quota cutoff)",
     )
+    parser.add_argument(
+        "--title-prefix",
+        action="store_true",
+        help="Embed each chunk with its note title prepended, into a *_title table",
+    )
     args = parser.parse_args()
 
     if args.embedder == "gemini":
@@ -73,6 +83,10 @@ async def main() -> None:
     else:
         embedder = BgeM3Embedder()
         dimensions, table = embedder.output_dimensionality, "chunks_bge_m3"
+
+    if args.title_prefix:
+        embedder = TitlePrefixEmbedder(embedder)
+        table = f"{table}_title"
 
     documents = load_documents(args.data_dir)
     indexer = PgVectorIndexer(

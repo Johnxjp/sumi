@@ -7,9 +7,11 @@ import pytest
 
 from src.retrieval.embedder import (
     BgeM3Embedder,
+    Embedder,
     GeminiEmbedder,
     QwenEmbedder,
     SentenceTransformerEmbedder,
+    TitlePrefixEmbedder,
 )
 
 
@@ -293,3 +295,35 @@ def test_embed_waits_out_rate_limit_and_retries(monkeypatch):
     )
     with pytest.raises(errors.ClientError):
         asyncio.run(embedder2.embed(["hello"]))
+
+
+def make_title_prefix_embedder() -> tuple[TitlePrefixEmbedder, mock.AsyncMock]:
+    inner = mock.create_autospec(Embedder, instance=True)
+    inner.output_dimensionality = 1024
+    inner.embed_documents.return_value = [[1.0]]
+    inner.embed_query.return_value = [2.0]
+    return TitlePrefixEmbedder(inner), inner
+
+
+@pytest.mark.parametrize(
+    ("titles", "expected_call"),
+    [
+        (["A Note"], mock.call(["A Note\n\nbody one"], titles=["A Note"])),
+        (None, mock.call(["body one"])),
+    ],
+    ids=["prefixes-the-title", "verbatim-without-titles"],
+)
+def test_title_prefix_embeds_documents(titles, expected_call):
+    embedder, inner = make_title_prefix_embedder()
+
+    asyncio.run(embedder.embed_documents(["body one"], titles=titles))
+
+    assert inner.embed_documents.await_args_list == [expected_call]
+
+
+def test_title_prefix_passes_queries_through_at_the_inner_dimensionality():
+    embedder, inner = make_title_prefix_embedder()
+
+    assert embedder.output_dimensionality == 1024
+    assert asyncio.run(embedder.embed_query("a query")) == [2.0]
+    inner.embed_query.assert_awaited_once_with("a query")

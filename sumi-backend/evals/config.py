@@ -1,3 +1,5 @@
+"""Settings for the eval-generation scripts: model, temperature, concurrency."""
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

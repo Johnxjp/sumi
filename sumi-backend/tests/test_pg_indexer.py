@@ -5,18 +5,7 @@ import pytest
 
 from src.retrieval.indexer import Document, PgVectorIndexer
 
-
-def _postgres_available() -> bool:
-    try:
-        with psycopg.connect("postgresql://localhost:5432/postgres", connect_timeout=2):
-            return True
-    except psycopg.OperationalError:
-        return False
-
-
-pytestmark = pytest.mark.skipif(
-    not _postgres_available(), reason="local Postgres is not running"
-)
+pytestmark = pytest.mark.postgres
 
 
 class FakeEmbedder:
@@ -30,19 +19,6 @@ class FakeEmbedder:
 
     async def embed_query(self, text):
         return self.vectors[text]
-
-
-@pytest.fixture
-def test_db_url() -> str:
-    with psycopg.connect(
-        "postgresql://localhost:5432/postgres", autocommit=True
-    ) as conn:
-        row = conn.execute(
-            "SELECT 1 FROM pg_database WHERE datname = 'sumi_test'"
-        ).fetchone()
-        if row is None:
-            conn.execute("CREATE DATABASE sumi_test")
-    return "postgresql://localhost:5432/sumi_test"
 
 
 def make_indexer(test_db_url: str, vectors: dict[str, list[float]]) -> PgVectorIndexer:
@@ -164,6 +140,25 @@ def test_reindexing_same_id_upserts(test_db_url):
     results = asyncio.run(indexer.search("apples?"))
     assert len(results) == 1
     assert results[0]["text"] == "all about bananas"
+
+
+def test_search_deeper_than_the_hnsw_default_returns_every_row(test_db_url):
+    # Enough rows that the planner prefers the HNSW index, whose scan visits
+    # hnsw.ef_search (default 40) candidates and would otherwise truncate.
+    texts = [f"doc {i}" for i in range(600)]
+    vectors = {text: [1.0, i / 600, (i % 7) / 7] for i, text in enumerate(texts)}
+    vectors["query"] = [1.0, 0.0, 0.0]
+    indexer = make_indexer(test_db_url, vectors)
+    asyncio.run(
+        indexer.index(
+            [
+                Document(id=f"d{i}", text=text, source="notes/s.md", metadata={})
+                for i, text in enumerate(texts)
+            ]
+        )
+    )
+
+    assert len(asyncio.run(indexer.search("query", top_k=60))) == 60
 
 
 def test_metadata_round_trip(test_db_url):

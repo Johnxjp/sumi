@@ -1,3 +1,5 @@
+"""Registry of tools the agent can call, with their JSON schemas."""
+
 from typing import Any
 
 
