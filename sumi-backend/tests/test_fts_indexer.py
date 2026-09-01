@@ -6,34 +6,12 @@ import pytest
 
 from src.retrieval.lexical import PgFtsIndexer
 
-
-def _postgres_available() -> bool:
-    try:
-        with psycopg.connect("postgresql://localhost:5432/postgres", connect_timeout=2):
-            return True
-    except psycopg.OperationalError:
-        return False
-
-
-pytestmark = pytest.mark.skipif(
-    not _postgres_available(), reason="local Postgres is not running"
-)
+pytestmark = pytest.mark.postgres
 
 TABLE = "chunks_fts_test"
 SOURCE_TABLE = "chunks_dense_test"
 
-
-@pytest.fixture
-def test_db_url() -> str:
-    with psycopg.connect(
-        "postgresql://localhost:5432/postgres", autocommit=True
-    ) as conn:
-        row = conn.execute(
-            "SELECT 1 FROM pg_database WHERE datname = 'sumi_test'"
-        ).fetchone()
-        if row is None:
-            conn.execute("CREATE DATABASE sumi_test")
-    return "postgresql://localhost:5432/sumi_test"
+Row = tuple[str, str, str, dict]
 
 
 @pytest.fixture
@@ -46,7 +24,7 @@ def indexer(test_db_url) -> PgFtsIndexer:
     return indexer
 
 
-def insert(indexer: PgFtsIndexer, rows: list[tuple[str, str, str, dict]]) -> None:
+def insert(indexer: PgFtsIndexer, rows: list[Row]) -> None:
     with (
         psycopg.connect(indexer.database_url, autocommit=True) as conn,
         conn.cursor() as cur,
@@ -55,6 +33,10 @@ def insert(indexer: PgFtsIndexer, rows: list[tuple[str, str, str, dict]]) -> Non
             f"INSERT INTO {TABLE} (id, text, source, metadata) VALUES (%s, %s, %s, %s)",
             [(i, text, source, json.dumps(meta)) for i, text, source, meta in rows],
         )
+
+
+def make_rows(count: int, text: str) -> list[Row]:
+    return [(f"common#{i}", text, f"c{i}.md", {}) for i in range(count)]
 
 
 def test_ensure_schema_is_idempotent(indexer):
@@ -71,66 +53,57 @@ def test_search_returns_the_indexer_row_shape(indexer):
     assert row["score"] > 0
 
 
-def test_a_title_hit_outranks_a_body_hit(indexer):
-    insert(
-        indexer,
-        [
-            (
-                "body#0",
-                "a passing mention of kayaking here",
-                "b.md",
-                {"title": "Other"},
-            ),
-            ("title#0", "unrelated prose entirely", "t.md", {"title": "Kayaking"}),
-        ],
-    )
-    results = asyncio.run(indexer.search("kayaking"))
-    assert [row["id"] for row in results] == ["title#0", "body#0"]
+@pytest.mark.parametrize(
+    ("rows", "query", "expected_ids"),
+    [
+        (
+            [
+                ("body#0", "a passing mention of kayaking", "b.md", {"title": "Other"}),
+                ("title#0", "unrelated prose entirely", "t.md", {"title": "Kayaking"}),
+            ],
+            "kayaking",
+            ["title#0", "body#0"],
+        ),
+        (
+            make_rows(5, "project " * 20 + "notes")
+            + [("rare#0", "kayaking project", "r.md", {})],
+            "project kayaking",
+            ["rare#0", "common#0", "common#1", "common#2", "common#3", "common#4"],
+        ),
+        (
+            [("a#0", "notes about kayaking", "a.md", {})],
+            "what did i write about kayaking in norway?",
+            ["a#0"],
+        ),
+        (
+            make_rows(19, "a note about work")
+            + [("rare#0", "a note about kayaking", "r.md", {})],
+            "work kayaking",
+            ["rare#0"],
+        ),
+        ([("a#0", "notes about kayaking", "a.md", {})], "the of and", []),
+    ],
+    ids=[
+        "title-hit-outranks-body-hit",
+        "rare-term-outweighs-repeated-common-one",
+        "any-query-term-matches",
+        "terms-above-max_df-dropped",
+        "stopwords-only-match-nothing",
+    ],
+)
+def test_search_ranking(indexer, rows, query, expected_ids):
+    insert(indexer, rows)
+    assert [row["id"] for row in asyncio.run(indexer.search(query))] == expected_ids
 
 
-def test_a_rare_term_outweighs_a_repeated_common_one(indexer):
-    common = "project " * 20
-    insert(
-        indexer,
-        [(f"common#{i}", f"{common} notes", f"c{i}.md", {}) for i in range(5)]
-        + [("rare#0", "kayaking project", "r.md", {})],
-    )
-    results = asyncio.run(indexer.search("project kayaking"))
-    assert results[0]["id"] == "rare#0"
-
-
-def test_any_query_term_is_enough_to_match(indexer):
-    insert(indexer, [("a#0", "notes about kayaking", "a.md", {})])
-    results = asyncio.run(indexer.search("what did i write about kayaking in norway?"))
-    assert [row["id"] for row in results] == ["a#0"]
-
-
-def test_terms_in_most_chunks_are_dropped_from_the_query(indexer):
-    insert(
-        indexer,
-        [(f"common#{i}", "a note about work", f"c{i}.md", {}) for i in range(19)]
-        + [("rare#0", "a note about kayaking", "r.md", {})],
-    )
-    results = asyncio.run(indexer.search("work kayaking"))
-    assert [row["id"] for row in results] == ["rare#0"]
-
-
-def test_a_query_of_only_common_terms_still_matches(indexer):
-    insert(
-        indexer,
-        [(f"common#{i}", "a note about work", f"c{i}.md", {}) for i in range(19)],
-    )
-    assert len(asyncio.run(indexer.search("work"))) == 10
-
-
-def test_a_stopword_only_query_matches_nothing(indexer):
-    insert(indexer, [("a#0", "notes about kayaking", "a.md", {})])
-    assert asyncio.run(indexer.search("the of and")) == []
-
-
-def test_top_k_limits_results(indexer):
-    insert(indexer, [(f"a#{i}", "kayaking", f"a{i}.md", {}) for i in range(5)])
-    assert len(asyncio.run(indexer.search("kayaking", top_k=2))) == 2
+@pytest.mark.parametrize(
+    ("count", "top_k", "expected"),
+    [(19, None, 10), (5, 2, 2)],
+    ids=["all-terms-above-max_df-still-match", "top-k-limits-results"],
+)
+def test_search_result_count(indexer, count, top_k, expected):
+    insert(indexer, make_rows(count, "a note about work"))
+    assert len(asyncio.run(indexer.search("work", top_k=top_k))) == expected
 
 
 def test_sync_from_copies_and_upserts(indexer):

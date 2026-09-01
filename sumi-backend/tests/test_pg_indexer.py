@@ -5,18 +5,7 @@ import pytest
 
 from src.retrieval.indexer import Document, PgVectorIndexer
 
-
-def _postgres_available() -> bool:
-    try:
-        with psycopg.connect("postgresql://localhost:5432/postgres", connect_timeout=2):
-            return True
-    except psycopg.OperationalError:
-        return False
-
-
-pytestmark = pytest.mark.skipif(
-    not _postgres_available(), reason="local Postgres is not running"
-)
+pytestmark = pytest.mark.postgres
 
 
 class FakeEmbedder:
@@ -30,19 +19,6 @@ class FakeEmbedder:
 
     async def embed_query(self, text):
         return self.vectors[text]
-
-
-@pytest.fixture
-def test_db_url() -> str:
-    with psycopg.connect(
-        "postgresql://localhost:5432/postgres", autocommit=True
-    ) as conn:
-        row = conn.execute(
-            "SELECT 1 FROM pg_database WHERE datname = 'sumi_test'"
-        ).fetchone()
-        if row is None:
-            conn.execute("CREATE DATABASE sumi_test")
-    return "postgresql://localhost:5432/sumi_test"
 
 
 def make_indexer(test_db_url: str, vectors: dict[str, list[float]]) -> PgVectorIndexer:

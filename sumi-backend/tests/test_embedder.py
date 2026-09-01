@@ -305,31 +305,25 @@ def make_title_prefix_embedder() -> tuple[TitlePrefixEmbedder, mock.AsyncMock]:
     return TitlePrefixEmbedder(inner), inner
 
 
-def test_title_prefix_prepends_the_title_to_each_document():
+@pytest.mark.parametrize(
+    ("titles", "expected_call"),
+    [
+        (["A Note"], mock.call(["A Note\n\nbody one"], titles=["A Note"])),
+        (None, mock.call(["body one"])),
+    ],
+    ids=["prefixes-the-title", "verbatim-without-titles"],
+)
+def test_title_prefix_embeds_documents(titles, expected_call):
     embedder, inner = make_title_prefix_embedder()
 
-    asyncio.run(embedder.embed_documents(["body one"], titles=["A Note"]))
+    asyncio.run(embedder.embed_documents(["body one"], titles=titles))
 
-    inner.embed_documents.assert_awaited_once_with(
-        ["A Note\n\nbody one"], titles=["A Note"]
-    )
+    assert inner.embed_documents.await_args_list == [expected_call]
 
 
-def test_title_prefix_embeds_verbatim_without_titles():
+def test_title_prefix_passes_queries_through_at_the_inner_dimensionality():
     embedder, inner = make_title_prefix_embedder()
 
-    asyncio.run(embedder.embed_documents(["body one"]))
-
-    inner.embed_documents.assert_awaited_once_with(["body one"])
-
-
-def test_title_prefix_passes_queries_straight_through():
-    embedder, inner = make_title_prefix_embedder()
-
+    assert embedder.output_dimensionality == 1024
     assert asyncio.run(embedder.embed_query("a query")) == [2.0]
     inner.embed_query.assert_awaited_once_with("a query")
-
-
-def test_title_prefix_reports_the_inner_dimensionality():
-    embedder, _ = make_title_prefix_embedder()
-    assert embedder.output_dimensionality == 1024

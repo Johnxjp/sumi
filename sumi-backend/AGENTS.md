@@ -155,7 +155,7 @@ the input dataset that the annotation tool then scores against.
 - Prefer `@mock.patch` decorators over `with mock.patch(...)` context managers.
 - Use `@pytest.mark.parametrize` for multiple similar inputs — consolidate tests
   that only differ in input/expected values into a single parametrized test.
-- Tests that need a database run against local Postgres and skip themselves when
-  it isn't running (see `tests/test_pg_indexer.py`); never point them at the
-  real `DATABASE_URL`.
+- Tests that need a database are marked `pytest.mark.postgres` and use the
+  `test_db_url` fixture from `tests/conftest.py`, which skips them when local
+  Postgres isn't running; never point them at the real `DATABASE_URL`.
 - Do not assert on raw log text.

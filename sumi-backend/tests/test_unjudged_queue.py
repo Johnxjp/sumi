@@ -62,22 +62,20 @@ def test_append_unjudged_skips_judged_candidates(tmp_path, qrels):
     assert json.loads(path.read_text()) == {}
 
 
-def test_append_unjudged_deduplicates_across_runs(tmp_path, qrels):
+@pytest.mark.parametrize(
+    ("first_rank", "second_rank", "expected_best"), [(7, 3, 3), (2, 9, 2)]
+)
+def test_append_unjudged_deduplicates_across_runs_keeping_the_best_rank(
+    tmp_path, qrels, first_rank, second_rank, expected_best
+):
     path = tmp_path / "queue.json"
-    append_unjudged(path, qrels, "run-1", [make_candidate("notes/a.md#0", 7)])
-    added = append_unjudged(path, qrels, "run-2", [make_candidate("notes/a.md#0", 3)])
+    append_unjudged(path, qrels, "run-1", [make_candidate("notes/a.md#0", first_rank)])
+    added = append_unjudged(
+        path, qrels, "run-2", [make_candidate("notes/a.md#0", second_rank)]
+    )
     assert added == 0
     [item] = json.loads(path.read_text()).values()
-    assert item["best_rank"] == 3
-    assert item["runs"] == ["run-1", "run-2"]
-
-
-def test_append_unjudged_keeps_the_best_rank_seen(tmp_path, qrels):
-    path = tmp_path / "queue.json"
-    append_unjudged(path, qrels, "run-1", [make_candidate("notes/a.md#0", 2)])
-    append_unjudged(path, qrels, "run-2", [make_candidate("notes/a.md#0", 9)])
-    [item] = json.loads(path.read_text()).values()
-    assert item["best_rank"] == 2
+    assert item["best_rank"] == expected_best
     assert item["runs"] == ["run-1", "run-2"]
 
 
@@ -93,18 +91,3 @@ def test_append_unjudged_drops_entries_that_have_since_been_judged(tmp_path, qre
     }
     append_unjudged(path, labelled, "run-2", [])
     assert json.loads(path.read_text()) == {}
-
-
-def test_append_unjudged_counts_only_new_items(tmp_path, qrels):
-    path = tmp_path / "queue.json"
-    added = append_unjudged(
-        path,
-        qrels,
-        "run-1",
-        [
-            make_candidate("notes/a.md#0", 1),
-            make_candidate("notes/b.md#0", 2, text="other"),
-        ],
-    )
-    assert added == 2
-    assert len(json.loads(path.read_text())) == 2

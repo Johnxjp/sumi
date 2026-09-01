@@ -23,6 +23,7 @@ dependencies = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = ["postgres: needs a local Postgres; skipped when it is not running"]
 
 [dependency-groups]
 dev = [

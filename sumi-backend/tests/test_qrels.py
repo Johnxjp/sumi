@@ -81,24 +81,30 @@ def test_graded_query_summarises_its_positives(annotations_path):
 
 
 @pytest.mark.parametrize(
-    ("row", "expected"),
+    ("row", "expected_key", "expected_gain"),
     [
-        ({"id": "notes/a.md#0", "text": "different text"}, 3),
-        ({"id": "other#7", "text": ""}, 3),
-        ({"id": "unknown#1", "text": f"  {TEXT}  "}, 3),
-        ({"id": "notes/b.md#0", "text": "unrelated"}, 0),
-        ({"id": "unknown#1", "text": "never seen"}, None),
-        ({"id": None, "text": None}, None),
+        ({"id": "notes/a.md#0", "text": "different text"}, CHUNK_KEY, 3),
+        ({"id": "other#7", "text": ""}, CHUNK_KEY, 3),
+        ({"id": "unknown#1", "text": f"  {TEXT}  "}, CHUNK_KEY, 3),
+        ({"id": "notes/b.md#0", "text": "unrelated"}, "otherkey", 0),
+        ({"id": "unknown#1", "text": "never seen"}, None, None),
+        ({"id": None, "text": None}, None, None),
+    ],
+    ids=[
+        "id-hit",
+        "id-hit-from-another-retriever",
+        "text-fallback",
+        "judged-negative",
+        "unjudged",
+        "no-id-no-text",
     ],
 )
-def test_lookup_gain_matches_by_id_then_text(annotations_path, row, expected):
+def test_match_by_chunk_id_then_text(
+    annotations_path, row, expected_key, expected_gain
+):
     qrel = load_graded_qrels(annotations_path)["what does napoleon say?"]
-    assert lookup_gain(qrel, row) == expected
-
-
-def test_match_chunk_key_identifies_the_judgment(annotations_path):
-    qrel = load_graded_qrels(annotations_path)["what does napoleon say?"]
-    assert match_chunk_key(qrel, {"id": "other#7", "text": ""}) == CHUNK_KEY
+    assert match_chunk_key(qrel, row) == expected_key
+    assert lookup_gain(qrel, row) == expected_gain
 
 
 def test_load_file_queries_reads_nested_key_and_strips_prefix(tmp_path):

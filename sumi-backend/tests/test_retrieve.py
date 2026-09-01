@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 from unittest import mock
 
 import pytest
@@ -10,18 +11,8 @@ from src.retrieval.retrieve import HybridRetriever, build_arm_indexer
 from src.retrieval.search_config import ArmConfig, RetrievalConfig
 
 DB_URL = "postgresql://localhost:5432/nowhere"
-
-
-class FakeArm:
-    """Records the depth it was asked for and serves canned rows."""
-
-    def __init__(self, rows: list[dict]):
-        self.rows = rows
-        self.requested_top_k = None
-
-    async def search(self, query: str, top_k: int | None = None) -> list[dict]:
-        self.requested_top_k = top_k
-        return self.rows[:top_k]
+QWEN = ArmConfig(name="qwen", kind="dense", table="chunks_qwen", embedder="qwen")
+FTS = ArmConfig(name="fts", kind="lexical", table="chunks_fts")
 
 
 def make_row(row_id: str, score: float = 0.5) -> dict:
@@ -34,20 +25,23 @@ def make_row(row_id: str, score: float = 0.5) -> dict:
     }
 
 
+def make_arm(rows: list[dict]) -> mock.NonCallableMagicMock:
+    arm = mock.create_autospec(PgVectorIndexer, instance=True)
+    arm.search.side_effect = lambda query, top_k=None: rows[:top_k]
+    return arm
+
+
 def make_retriever(
-    config: RetrievalConfig, arms: dict[str, FakeArm]
+    build_arm_indexer: mock.MagicMock, config: RetrievalConfig, *arms
 ) -> HybridRetriever:
-    with mock.patch(
-        "src.retrieval.retrieve.build_arm_indexer",
-        side_effect=lambda arm, _: arms[arm.name],
-    ):
-        return HybridRetriever(config, database_url=DB_URL)
+    build_arm_indexer.side_effect = list(arms)
+    return HybridRetriever(config, database_url=DB_URL)
 
 
-def test_single_arm_passes_through_with_its_own_scores():
-    arm = ArmConfig(name="qwen", kind="dense", table="chunks_qwen", embedder="qwen")
-    fake = FakeArm([make_row("a", 0.9), make_row("b", 0.8), make_row("c", 0.7)])
-    retriever = make_retriever(RetrievalConfig(arms=(arm,)), {"qwen": fake})
+@mock.patch("src.retrieval.retrieve.build_arm_indexer", autospec=True)
+def test_single_arm_passes_through_with_its_own_scores(build_arm_indexer):
+    arm = make_arm([make_row("a", 0.9), make_row("b", 0.8), make_row("c", 0.7)])
+    retriever = make_retriever(build_arm_indexer, RetrievalConfig(arms=(QWEN,)), arm)
 
     results = asyncio.run(retriever.retrieve("q", top_k=2))
 
@@ -56,28 +50,23 @@ def test_single_arm_passes_through_with_its_own_scores():
     assert [row["arms"] for row in results] == [{"qwen": 1}, {"qwen": 2}]
 
 
-def test_arms_are_searched_at_their_configured_depth():
-    arm = ArmConfig(
-        name="qwen", kind="dense", table="chunks_qwen", embedder="qwen", depth=25
-    )
-    fake = FakeArm([make_row("a")])
-    retriever = make_retriever(RetrievalConfig(arms=(arm,)), {"qwen": fake})
+@mock.patch("src.retrieval.retrieve.build_arm_indexer", autospec=True)
+def test_arms_are_searched_at_their_configured_depth(build_arm_indexer):
+    arm = make_arm([make_row("a")])
+    config = RetrievalConfig(arms=(replace(QWEN, depth=25),))
+    retriever = make_retriever(build_arm_indexer, config, arm)
 
     asyncio.run(retriever.retrieve("q"))
 
-    assert fake.requested_top_k == 25
+    arm.search.assert_awaited_once_with("q", top_k=25)
 
 
-def test_multiple_arms_are_fused_and_truncated():
-    arms = (
-        ArmConfig(name="qwen", kind="dense", table="chunks_qwen", embedder="qwen"),
-        ArmConfig(name="fts", kind="lexical", table="chunks_fts"),
-    )
-    fakes = {
-        "qwen": FakeArm([make_row("a"), make_row("b")]),
-        "fts": FakeArm([make_row("c"), make_row("a")]),
-    }
-    retriever = make_retriever(RetrievalConfig(arms=arms, fusion="rrf", top_k=2), fakes)
+@mock.patch("src.retrieval.retrieve.build_arm_indexer", autospec=True)
+def test_multiple_arms_are_fused_and_truncated(build_arm_indexer):
+    qwen = make_arm([make_row("a"), make_row("b")])
+    fts = make_arm([make_row("c"), make_row("a")])
+    config = RetrievalConfig(arms=(QWEN, FTS), fusion="rrf", top_k=2)
+    retriever = make_retriever(build_arm_indexer, config, qwen, fts)
 
     results = asyncio.run(retriever.retrieve("q"))
 
@@ -86,15 +75,13 @@ def test_multiple_arms_are_fused_and_truncated():
     assert results[0]["arms"] == {"qwen": 1, "fts": 2}
 
 
-def test_weights_are_applied_when_fusing():
-    arms = (
-        ArmConfig(name="qwen", kind="dense", table="chunks_qwen", embedder="qwen"),
-        ArmConfig(name="fts", kind="lexical", table="chunks_fts"),
+@mock.patch("src.retrieval.retrieve.build_arm_indexer", autospec=True)
+def test_weights_are_applied_when_fusing(build_arm_indexer):
+    config = RetrievalConfig(
+        arms=(QWEN, FTS), fusion="rrf", weights=(("qwen", 0.1), ("fts", 5.0))
     )
-    fakes = {"qwen": FakeArm([make_row("a")]), "fts": FakeArm([make_row("b")])}
     retriever = make_retriever(
-        RetrievalConfig(arms=arms, fusion="rrf", weights=(("qwen", 0.1), ("fts", 5.0))),
-        fakes,
+        build_arm_indexer, config, make_arm([make_row("a")]), make_arm([make_row("b")])
     )
 
     results = asyncio.run(retriever.retrieve("q"))
@@ -102,13 +89,11 @@ def test_weights_are_applied_when_fusing():
     assert [row["id"] for row in results] == ["b", "a"]
 
 
-def test_single_fusion_with_several_arms_is_rejected():
-    arms = (
-        ArmConfig(name="qwen", kind="dense", table="chunks_qwen", embedder="qwen"),
-        ArmConfig(name="fts", kind="lexical", table="chunks_fts"),
+@mock.patch("src.retrieval.retrieve.build_arm_indexer", autospec=True)
+def test_single_fusion_with_several_arms_is_rejected(build_arm_indexer):
+    retriever = make_retriever(
+        build_arm_indexer, RetrievalConfig(arms=(QWEN, FTS)), make_arm([]), make_arm([])
     )
-    fakes = {"qwen": FakeArm([]), "fts": FakeArm([])}
-    retriever = make_retriever(RetrievalConfig(arms=arms), fakes)
 
     with pytest.raises(ValueError, match="exactly one arm"):
         asyncio.run(retriever.retrieve("q"))
@@ -132,9 +117,7 @@ def test_build_arm_indexer_pairs_embedder_with_its_table(embedder, table, expect
 
 
 def test_build_arm_indexer_builds_the_lexical_arm():
-    indexer = build_arm_indexer(
-        ArmConfig(name="fts", kind="lexical", table="chunks_fts"), DB_URL
-    )
+    indexer = build_arm_indexer(FTS, DB_URL)
     assert isinstance(indexer, PgFtsIndexer)
     assert indexer.table == "chunks_fts"
 
@@ -142,18 +125,9 @@ def test_build_arm_indexer_builds_the_lexical_arm():
 @pytest.mark.parametrize(
     ("arm", "message"),
     [
-        (
-            ArmConfig(name="a", kind="dense", table="chunks_qwen", embedder=None),
-            "requires an embedder",
-        ),
-        (
-            ArmConfig(name="a", kind="dense", table="chunks_qwen", embedder="gemini"),
-            "Unknown embedder",
-        ),
-        (
-            ArmConfig(name="a", kind="dense", table="chunks_bge_m3", embedder="qwen"),
-            "expected a chunks_qwen",
-        ),
+        (replace(QWEN, embedder=None), "requires an embedder"),
+        (replace(QWEN, embedder="gemini"), "Unknown embedder"),
+        (replace(QWEN, table="chunks_bge_m3"), "expected a chunks_qwen"),
     ],
 )
 def test_build_arm_indexer_rejects_invalid_arms(arm, message):

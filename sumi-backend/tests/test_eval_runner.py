@@ -1,4 +1,5 @@
 import json
+import math
 
 import pytest
 
@@ -39,20 +40,21 @@ def make_rows(*ids: str) -> list[dict]:
     ]
 
 
-def test_score_annotated_treats_unjudged_rows_as_irrelevant(qrel):
+def test_score_annotated_counts_unjudged_rows_as_irrelevant(qrel):
+    # Retrieved gains [3, unjudged, 1]; the ideal ranking also holds the missed 3.
     metrics = score_annotated(qrel, make_rows("a#0", "unseen#0", "b#0"))
-    assert metrics["precision@10"] == pytest.approx(0.2)
-    assert metrics["ndcg@10"] < metrics["ndcg@10_condensed"]
-    assert metrics["recall@10"] == pytest.approx(2 / 3)
-    assert metrics["mrr@10"] == 1.0
-    assert metrics["judged_coverage@10"] == pytest.approx(2 / 3)
-
-
-def test_score_annotated_penalises_a_positive_that_was_never_retrieved(qrel):
-    found_all = score_annotated(qrel, make_rows("a#0", "c#0", "b#0"))
-    missed_one = score_annotated(qrel, make_rows("a#0", "b#0"))
-    assert found_all["ndcg@10"] == pytest.approx(1.0)
-    assert missed_one["ndcg@10"] < 1.0
+    ideal = 3 + 3 / math.log2(3) + 1 / 2
+    assert metrics == pytest.approx(
+        {
+            "ndcg@10": (3 + 1 / 2) / ideal,
+            "ndcg@10_condensed": (3 + 1 / math.log2(3)) / ideal,
+            "ndcg@5": (3 + 1 / 2) / ideal,
+            "recall@10": 2 / 3,
+            "mrr@10": 1.0,
+            "precision@10": 0.2,
+            "judged_coverage@10": 2 / 3,
+        }
+    )
 
 
 def test_find_positive_ranks_reports_where_each_positive_landed(qrel):
@@ -70,11 +72,8 @@ def test_build_result_rows_tags_each_row_with_its_judgment(qrel):
     assert (unjudged["rank"], unjudged["gain"], unjudged["judged"]) == (2, None, False)
     assert judged["title"] == "a#0"
 
-
-def test_build_result_rows_without_qrels_leaves_gains_unset():
-    [row] = build_result_rows(make_rows("a#0"), None)
-    assert row["gain"] is None
-    assert row["judged"] is False
+    [unscored] = build_result_rows(make_rows("a#0"), None)
+    assert (unscored["gain"], unscored["judged"]) == (None, False)
 
 
 def test_score_generated_matches_on_the_source_file():
@@ -111,18 +110,7 @@ ANNOTATED_METRICS = {
 }
 
 
-def test_aggregate_averages_only_its_own_split():
-    records = [
-        make_record("annotated", "train", **ANNOTATED_METRICS, num_relevant=2),
-        make_record(
-            "annotated", "val", **{**ANNOTATED_METRICS, "ndcg@10": 1.0}, num_relevant=2
-        ),
-    ]
-    assert aggregate(records, "train")["annotated"]["ndcg@10"] == 0.5
-    assert aggregate(records, "val")["annotated"]["ndcg@10"] == 1.0
-
-
-def test_aggregate_excludes_queries_without_positives():
+def test_aggregate_averages_one_split_with_annotated_and_generated_apart():
     records = [
         make_record("annotated", "train", **ANNOTATED_METRICS, num_relevant=2),
         make_record(
@@ -131,29 +119,26 @@ def test_aggregate_excludes_queries_without_positives():
             **{**ANNOTATED_METRICS, "ndcg@10": 0.0},
             num_relevant=0,
         ),
-    ]
-    block = aggregate(records, "train")["annotated"]
-    assert block["ndcg@10"] == 0.5
-    assert block["num_queries"] == 1
-    assert block["excluded_zero_positive"] == 1
-
-
-def test_aggregate_reports_generated_queries_separately():
-    records = [
+        make_record(
+            "annotated", "val", **{**ANNOTATED_METRICS, "ndcg@10": 1.0}, num_relevant=2
+        ),
         make_record(
             "generated", "train", **{"file_recall@10": 1.0, "file_mrr@10": 0.5}
         ),
         make_record(
             "generated", "train", **{"file_recall@10": 0.0, "file_mrr@10": 0.0}
         ),
+        make_record("generated", "val", **{"file_recall@10": 0.0, "file_mrr@10": 0.0}),
     ]
-    block = aggregate(records, "train")
-    assert block["generated"] == {
-        "file_recall@10": 0.5,
-        "file_mrr@10": 0.25,
-        "num_queries": 2,
+    assert aggregate(records, "train") == {
+        "annotated": {
+            **ANNOTATED_METRICS,
+            "num_queries": 1,
+            "excluded_zero_positive": 1,
+        },
+        "generated": {"file_recall@10": 0.5, "file_mrr@10": 0.25, "num_queries": 2},
     }
-    assert block["annotated"]["num_queries"] == 0
+    assert aggregate(records, "val")["annotated"]["ndcg@10"] == 1.0
 
 
 def test_split_of_labels_unassigned_queries():

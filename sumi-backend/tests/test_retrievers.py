@@ -24,8 +24,15 @@ def test_build_pgvector_local_embedder(tmp_path, embedder_name, embedder_cls, ta
     assert retriever.dimensions == retriever.embedder.output_dimensionality
 
 
-def test_build_pgvector_requires_table(tmp_path):
-    config = RetrieverConfig(name="qwen", type="pgvector", embedder="qwen")
+@pytest.mark.parametrize(
+    "config",
+    [
+        RetrieverConfig(name="qwen", type="pgvector", embedder="qwen"),
+        RetrieverConfig(name="fts", type="fts"),
+    ],
+    ids=["pgvector", "fts"],
+)
+def test_build_retriever_requires_table(tmp_path, config):
     with pytest.raises(ValueError, match="table"):
         build_retriever(config, tmp_path)
 
@@ -47,8 +54,3 @@ def test_build_fts_retriever(tmp_path):
     retriever = build_retriever(config, tmp_path)
     assert isinstance(retriever, PgFtsIndexer)
     assert retriever.table == "chunks_fts"
-
-
-def test_build_fts_requires_table(tmp_path):
-    with pytest.raises(ValueError, match="table"):
-        build_retriever(RetrieverConfig(name="fts", type="fts"), tmp_path)
