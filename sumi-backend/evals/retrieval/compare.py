@@ -22,16 +22,25 @@ def load_runs(runs_dir: Path) -> list[dict[str, Any]]:
     return runs
 
 
+def format_metric(block: dict[str, Any], name: str, width: int) -> str:
+    """A dash where a run has no value — an older run predating the metric,
+    or a query set it skipped — so it is never read as a score of zero."""
+    value = block.get(name)
+    if value is None or not block.get("num_queries"):
+        return f"{'-':>{width}}"
+    return f"{value:>{width}.3f}"
+
+
 def format_row(run: dict[str, Any]) -> str:
     cells = []
     for split in ("train", "val"):
-        block = run[split]
+        annotated, generated = run[split]["annotated"], run[split]["generated"]
         cells.append(
-            f"{block['annotated']['ndcg@10']:>7.3f} "
-            f"{block['annotated'].get('ndcg@10_condensed', 0.0):>6.3f} "
-            f"{block['annotated']['precision@10']:>6.3f} "
-            f"{block['generated']['file_recall@10']:>6.3f} "
-            f"{block['generated']['file_mrr@10']:>6.3f}"
+            f"{format_metric(annotated, 'ndcg@10', 7)} "
+            f"{format_metric(annotated, 'ndcg@10_condensed', 6)} "
+            f"{format_metric(annotated, 'precision@10', 6)} "
+            f"{format_metric(generated, 'file_recall@10', 6)} "
+            f"{format_metric(generated, 'file_mrr@10', 6)}"
         )
     return f"{run['run_id']:<40} {cells[0]}  {cells[1]}"
 
