@@ -1,3 +1,5 @@
+"""Dispatch a tool call from the model to the registry and format the result."""
+
 import json
 from typing import Any
 

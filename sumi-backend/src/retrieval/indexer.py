@@ -1,3 +1,5 @@
+"""Stores that index and search embedded chunks: pgvector and legacy BreadBowl."""
+
 from abc import ABC, abstractmethod
 from typing import Any
 

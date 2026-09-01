@@ -1,3 +1,7 @@
+> **Status: executed** in commits `26a11fa`..`d5296ff` (2026-08-31 → 2026-09-01). Kept as
+> history; statements below describe the repository before that work. For the
+> current state read `docs/retrieval/retrieval_overview.md`.
+
 # Candidate Retrieval: Build, Measure, Optimise
 
 ## Context

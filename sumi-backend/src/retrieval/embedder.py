@@ -1,3 +1,5 @@
+"""Embedding models (Gemini, Qwen, BGE-M3) with shared over-length handling."""
+
 import asyncio
 import math
 import re

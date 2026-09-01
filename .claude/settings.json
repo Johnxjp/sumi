@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; case \"$f\" in *.py) uv run --project \"$CLAUDE_PROJECT_DIR/sumi-backend\" ruff check --fix \"$f\" && uv run --project \"$CLAUDE_PROJECT_DIR/sumi-backend\" ruff format \"$f\";; esac; } >/dev/null 2>&1 || true",
+            "timeout": 30,
+            "statusMessage": "ruff: fixing lints and formatting"
+          }
+        ]
+      }
+    ]
+  }
+}

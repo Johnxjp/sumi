@@ -1,3 +1,5 @@
+"""Read-only filesystem tools over the notes directory, sandboxed to data_dir."""
+
 import json
 import re
 import subprocess

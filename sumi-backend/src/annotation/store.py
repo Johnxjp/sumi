@@ -1,3 +1,5 @@
+"""Persist relevance judgments to annotations.json with atomic writes."""
+
 import json
 import os
 import tempfile

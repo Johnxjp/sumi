@@ -1,3 +1,5 @@
+"""Discover, allowlist and register the tools an MCP server exposes."""
+
 from collections.abc import Callable
 from typing import Any
 

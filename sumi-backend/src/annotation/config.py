@@ -1,9 +1,6 @@
-from pathlib import Path
+"""Retriever declarations for the annotation tool. Plain Python, no env vars."""
 
 from src.annotation.retrievers import RetrieverConfig
-
-REPO_ROOT = Path(__file__).parents[2]
-ANNOTATIONS_PATH = REPO_ROOT.parent / "data" / "annotations.json"
 
 RETRIEVER_CONFIGS = [
     RetrieverConfig(name="qwen", type="pgvector", embedder="qwen", table="chunks_qwen"),

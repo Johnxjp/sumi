@@ -1,3 +1,5 @@
+"""Build the retriever backends the annotation tool pools over."""
+
 import json
 import os
 from pathlib import Path

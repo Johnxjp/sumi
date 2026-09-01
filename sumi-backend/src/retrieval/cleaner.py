@@ -1,3 +1,5 @@
+"""Normalize raw note text before chunking."""
+
 import re
 import unicodedata
 

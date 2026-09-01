@@ -1,3 +1,5 @@
+"""OpenRouter client and structured-output call used to generate eval queries."""
+
 from openrouter import OpenRouter
 from openrouter.components import (
     ChatFormatJSONSchemaConfig,

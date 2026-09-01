@@ -16,7 +16,7 @@ Search the notes directly:
 uv run python -m scripts.search "what does napoleon say about leadership"
 ```
 
-See `AGENTS.md` for the full command reference (ingestion, evals, linting, etc.)
+See `../AGENTS.md` for the full command reference (ingestion, evals, linting, etc.)
 and architecture notes.
 
 ## Annotation app
