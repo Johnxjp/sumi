@@ -12,18 +12,25 @@ directory (`data/notion-export-markdown` at the repo root, configurable as
 `data_dir`).
 
 **1. Agent CLI** — `main.py` → `src/agent.py` + `src/tools/`. A terminal REPL
-running an OpenRouter tool-calling agent. Its built-in tools
+running an OpenRouter tool-calling agent. Its filesystem tools
 (`src/tools/file.py`, registered through `src/tools/registry.py`) read the
 notes directory: read a file, list a directory, ripgrep search — all sandboxed
-to `data_dir`. It does **not** use the retrieval pipeline yet; wiring it to
-`src/retrieval/retrieve.py:retrieve()` is open work.
+to `data_dir`. Its `search_notes` tool (`src/tools/search.py`, registered
+explicitly by `main.py`) calls `src/retrieval/retrieve.py:retrieve()` with a
+fixed top 10 and returns each chunk as `{rank, chunk_id, source, title, text}`,
+which `src/tools/core.py` serialises to JSON for the model. The system prompt
+tells the model to search first and to call `read_file` on a chunk's `source`
+when it needs the whole note. There is no relevance cut-off: every eval number
+is measured at an unthresholded top 10, and the fused score measures how many
+arms agree, not relevance, so a cut-off would be a retrieval experiment.
+Nothing measures the answers the agent produces.
 
 At startup it also registers read-only Gmail tools over MCP. `src/mcp_client.py`
 is a generic synchronous client for any streamable-HTTP MCP server;
 `src/tools/mcp.py` discovers a server's tools, filters them against an
 allowlist and registers them; `src/tools/gmail.py` applies that to a locally
-run workspace-mcp server. If the server is not running the REPL falls back to
-filesystem tools only. Detail and history: `docs/mcp-integration.md`.
+run workspace-mcp server. If the server is not running the REPL runs with the
+notes tools only. Detail and history: `docs/mcp-integration.md`.
 
 **2. Retrieval pipeline** — `src/retrieval/`. Ingestion
 (`scripts/ingest.py`) is `cleaner.clean_text` → `chunker.chunk_text`

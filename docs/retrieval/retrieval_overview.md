@@ -52,8 +52,9 @@ Sumi is a RAG system over a personal Notion export: 2,329 markdown notes,
 split into 5,979 chunks, stored in Postgres. Given a query, `retrieve(query,
 top_k=10)` (`src/retrieval/retrieve.py`) returns the ten chunks most likely
 to answer it. This document covers that retrieval step only, not answer
-generation. The agent REPL (`main.py`) does not use this stack yet; it still
-reads the notes directory with filesystem tools.
+generation. The agent REPL (`main.py`) calls `retrieve()` through its
+`search_notes` tool (`src/tools/search.py`); what the model does with the
+chunks is not evaluated.
 
 ## Architecture
 

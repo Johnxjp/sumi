@@ -1,7 +1,8 @@
 # sumi-backend
 
 Backend for "sumi", a RAG system over a personal Notion export, with a terminal
-agent (filesystem + read-only Gmail tools) and a retrieval pipeline into pgvector.
+agent (note search, filesystem and read-only Gmail tools) and a retrieval pipeline
+into pgvector.
 
 ## Run
 

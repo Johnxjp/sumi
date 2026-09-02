@@ -14,5 +14,5 @@ The agent REPL can search and read your Gmail through a locally run
 [workspace-mcp](https://github.com/taylorwilsdon/google_workspace_mcp) server
 (version-pinned, `--read-only`, `gmail.readonly` scope only — the token cannot
 send, modify or delete mail). If the server isn't running, the REPL starts
-with filesystem tools only. Setup, running, and the checklist for hosting the
+without Gmail tools. Setup, running, and the checklist for hosting the
 server elsewhere: `docs/mcp-integration.md`.
