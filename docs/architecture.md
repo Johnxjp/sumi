@@ -20,7 +20,11 @@ explicitly by `main.py`) calls `src/retrieval/retrieve.py:retrieve()` with a
 fixed top 10 and returns each chunk as `{rank, chunk_id, source, title, text}`,
 which `src/tools/core.py` serialises to JSON for the model. The system prompt
 tells the model to search first and to call `read_file` on a chunk's `source`
-when it needs the whole note. There is no relevance cut-off: every eval number
+when it needs the whole note. Once a turn ends, each `search_notes` result in
+the history is replaced by a stub (the query, then every chunk's rank, title
+and source path), so ten chunks of text are not re-sent on every later call;
+a tool opts in by passing a `summarise` function to `register_tool`, and only
+`search_notes` does. There is no relevance cut-off: every eval number
 is measured at an unthresholded top 10, and the fused score measures how many
 arms agree, not relevance, so a cut-off would be a retrieval experiment.
 Nothing measures the answers the agent produces.

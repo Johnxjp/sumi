@@ -1,5 +1,6 @@
 """Registry of tools the agent can call, with their JSON schemas."""
 
+from collections.abc import Callable
 from typing import Any
 
 
@@ -27,16 +28,35 @@ class ToolRegistry:
         )
 
     def register_tool(
-        self, name: str, function: callable, model_schema: dict[str, Any]
+        self,
+        name: str,
+        function: callable,
+        model_schema: dict[str, Any],
+        summarise: Callable[[dict[str, Any], Any], str] | None = None,
     ):
         """
         Registers a tool. Schema is passed to the LLM to describe the tool's parameters and usage.
+        summarise, if given, turns (arguments, result) into a short stand-in that replaces
+        the full result in the conversation history once the turn that produced it ends.
         """
         if name in self.registry:
             raise ValueError(f"Tool with {name} already registered.")
 
         model_schema = {"type": "function", "function": model_schema}
-        self.registry[name] = {"fn": function, "schema": model_schema}
+        self.registry[name] = {
+            "fn": function,
+            "schema": model_schema,
+            "summarise": summarise,
+        }
+
+    def summarise_result(
+        self, name: str, arguments: dict[str, Any], result: Any
+    ) -> str | None:
+        """A short stand-in for a tool's result, or None if the tool keeps its full result."""
+        summarise = self.registry[name]["summarise"]
+        if summarise is None:
+            return None
+        return summarise(arguments, result)
 
     def call_tool(self, name: str, arguments: dict) -> Any:
         """

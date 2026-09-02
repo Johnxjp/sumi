@@ -54,5 +54,24 @@ def search_notes(query: str) -> list[dict[str, Any]]:
     return [format_chunk(rank, row) for rank, row in enumerate(rows, start=1)]
 
 
+def summarise_search_result(
+    arguments: dict[str, Any], chunks: list[dict[str, Any]]
+) -> str:
+    header = (
+        f"search_notes({arguments['query']!r}) returned {len(chunks)} chunks. "
+        "Their text was removed from the history; call read_file with a source "
+        "path to read a note, or search again."
+    )
+    lines = [
+        f"{chunk['rank']}. {chunk['title']} — {chunk['source']}" for chunk in chunks
+    ]
+    return "\n".join([header, *lines])
+
+
 def register_search_tools(reg: ToolRegistry = registry) -> None:
-    reg.register_tool("search_notes", search_notes, SEARCH_NOTES_SCHEMA)
+    reg.register_tool(
+        "search_notes",
+        search_notes,
+        SEARCH_NOTES_SCHEMA,
+        summarise=summarise_search_result,
+    )

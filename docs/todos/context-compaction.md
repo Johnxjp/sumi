@@ -1,7 +1,8 @@
 # Compact the agent's conversation history before the context window fills
 
-Status: open. Raised 2026-09-02. Do `prune-tool-results.md` first: it removes
-the largest source of growth and makes compaction rare.
+Status: open. Raised 2026-09-02. `search_notes` results are already replaced
+by stubs once a turn ends (see `docs/architecture.md`), which removes the
+largest source of growth and makes compaction rare.
 
 ## Problem
 

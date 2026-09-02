@@ -3,7 +3,13 @@ from unittest import mock
 import pytest
 
 from src.tools.registry import ToolRegistry
-from src.tools.search import TOP_K, format_chunk, register_search_tools, search_notes
+from src.tools.search import (
+    TOP_K,
+    format_chunk,
+    register_search_tools,
+    search_notes,
+    summarise_search_result,
+)
 
 
 def make_row(row_id: str, title: str = "Title") -> dict:
@@ -61,5 +67,18 @@ def test_register_search_tools_routes_to_search_notes(retrieve):
     [schema] = reg.tools
     assert schema["function"]["name"] == "search_notes"
     assert schema["function"]["parameters"]["required"] == ["query"]
+    assert reg.get_tool("search_notes")["summarise"] is summarise_search_result
     assert reg.call_tool("search_notes", {"query": "q"})[0]["chunk_id"] == "a.md#0"
     retrieve.assert_awaited_once_with("q", top_k=TOP_K)
+
+
+def test_summarise_search_result_lists_every_chunk():
+    chunks = [
+        format_chunk(1, make_row("a.md#0", "A")),
+        format_chunk(2, make_row("b/c.md#2", "C")),
+    ]
+
+    header, *lines = summarise_search_result({"query": "q"}, chunks).splitlines()
+
+    assert header.startswith("search_notes('q') returned 2 chunks.")
+    assert lines == ["1. A — a.md", "2. C — b/c.md"]

@@ -15,6 +15,11 @@ def run_tool(name: str, arguments: str) -> tuple[bool, Any]:
         return False, f"{type(e).__name__}: {e}"
 
 
+def summarise_tool_result(name: str, arguments: str, result: Any) -> str | None:
+    """A short stand-in for the result, or None if the tool keeps its full result in history."""
+    return registry.summarise_result(name, json.loads(arguments), result)
+
+
 def stringify_tool_result(tool_results: Any) -> str:
     if isinstance(tool_results, str):
         return tool_results
