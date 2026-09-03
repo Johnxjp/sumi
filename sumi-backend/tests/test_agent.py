@@ -60,3 +60,26 @@ def test_run_replaces_summarised_results_once_the_turn_ends(run_tool, summarise)
         mock.call("search_notes", '{"query": "q"}', [{"rank": 1}]),
         mock.call("read_file", '{"filename": "a.md"}', "note text"),
     ]
+
+
+@mock.patch("src.agent.summarise_tool_result", autospec=True)
+@mock.patch("src.agent.run_tool", autospec=True)
+def test_run_prints_nothing_when_not_verbose(run_tool, summarise, capsys):
+    run_tool.return_value = (True, "note text")
+    summarise.return_value = None
+    responses = iter(
+        [
+            make_response(
+                "tool_calls",
+                tool_calls=[make_tool_call("c1", "read_file", '{"filename": "a.md"}')],
+            ),
+            make_response("stop", content="answer"),
+        ]
+    )
+    agent = Agent(api_key="key", model="model", system_prompt="sys", verbose=False)
+    agent.client = SimpleNamespace(
+        chat=SimpleNamespace(send=lambda **kwargs: next(responses))
+    )
+
+    assert agent.run("question", tools=[]) == "answer"
+    assert capsys.readouterr().out == ""

@@ -1,5 +1,7 @@
 """Main agent loop"""
 
+import argparse
+
 import src.tools.file  # noqa: F401  # registers the filesystem tools on import
 from src.agent import Agent
 from src.config import app_config
@@ -30,6 +32,15 @@ SYSTEM_PROMPT = (
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Sumi terminal agent")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="print intermediate output (model reasoning and tool calls)",
+    )
+    args = parser.parse_args()
+
     print("Hello from sumi-backend!")
     register_search_tools()
     n_gmail_tools = register_gmail_tools()
@@ -39,6 +50,7 @@ def main():
         api_key=app_config.api_key,
         model=app_config.model_name,
         system_prompt=SYSTEM_PROMPT,
+        verbose=args.verbose,
     )
 
     query = ""

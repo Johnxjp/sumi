@@ -8,15 +8,26 @@ from src.tools.core import run_tool, stringify_tool_result, summarise_tool_resul
 
 
 class Agent:
-    def __init__(self, api_key: str, model: str, system_prompt: str = ""):
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        system_prompt: str = "",
+        verbose: bool = False,
+    ):
         self.conversation_history: list = []
         self.model = model
         self.api_key = api_key
         self.client = None
         self.system_prompt = system_prompt
+        self.verbose = verbose
         self.client = OpenRouter(api_key)
 
         self.clear_conversation_history()
+
+    def _log(self, message: str) -> None:
+        if self.verbose:
+            print(message)
 
     def clear_conversation_history(self):
         self.conversation_history = []
@@ -49,7 +60,7 @@ class Agent:
                     tools=tools,
                     stream=False,
                 )
-                print(
+                self._log(
                     f"[info] Model response finish reason: {response.choices[0].finish_reason}, content: {response.choices[0].message.reasoning}"
                 )
 
@@ -64,7 +75,7 @@ class Agent:
                     for tool_call in result.message.tool_calls:
                         name = tool_call.function.name
                         arguments = tool_call.function.arguments
-                        print(f"[tool call] {name}({arguments})")
+                        self._log(f"[tool call] {name}({arguments})")
                         is_success, output = run_tool(name, arguments)
                         output_str = stringify_tool_result(output)
                         message = {
@@ -81,7 +92,7 @@ class Agent:
                                 stubs.append((message, stub))
                 elif result.finish_reason == "length":
                     # Basic Compaction
-                    print(
+                    self._log(
                         "[info] Model response length exceeded. Compacting conversation history."
                     )
                     last_messages = self.conversation_history[

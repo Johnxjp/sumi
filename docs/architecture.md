@@ -12,9 +12,9 @@ directory (`data/notion-export-markdown` at the repo root, configurable as
 `data_dir`).
 
 **1. Agent CLI** — `main.py` → `src/agent.py` + `src/tools/`. A terminal REPL
-running an OpenRouter tool-calling agent. By default the loop prints its
-intermediate steps (model reasoning and each tool call); `uv run main.py
---quiet` hides them and shows only the final answer. Its filesystem tools
+running an OpenRouter tool-calling agent. By default the loop shows only the
+final answer; `uv run main.py --verbose` also prints the intermediate steps
+(model reasoning and each tool call). Its filesystem tools
 (`src/tools/file.py`, registered through `src/tools/registry.py`) read the
 notes directory: read a file, list a directory, ripgrep search — all sandboxed
 to `data_dir`. Its `search_notes` tool (`src/tools/search.py`, registered
