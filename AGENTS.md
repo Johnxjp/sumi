@@ -40,15 +40,12 @@ sumi/
 
 Documents and when to read them.
 
+- `docs/active`: when checking approved plans that can be executed or have been implemented
+- `docs/research`: locating investigations or experimental findings
 - `docs/architecture.md`: before changing code — the parts, data flow, tables, config objects.
-- `docs/retrieval/retrieval_overview.md`: anything about search quality — current metrics, datasets, methodology, shipped config.
-- `docs/retrieval/retrieval_improvements.md`: known weaknesses and measurement gaps; the retrieval tech-debt list.
-- `docs/annotation.md`: how human relevance judgments are produced and stored.
-- `docs/mcp-integration.md`: Gmail tools, the MCP client, adding another mail provider.
+- `docs/design`: understand why certain decisions were made for components and how implemented
 - `docs/testing.md`: what a change must cover, how to run tests, the Postgres fixture.
 - `docs/coding-standards.md`: style rules, and how to explain work to the user.
-- `docs/plans/active/`, `docs/plans/completed/`: execution plans; completed ones are history, not current state.
-- `docs/todos/`: known gaps, one note per issue, with the evidence and a proposed fix. When the work ships, update the owning doc and move the note to `docs/todos/complete/`.
 
 ## Commands
 
