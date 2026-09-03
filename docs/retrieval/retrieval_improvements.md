@@ -302,11 +302,14 @@ return that many rows, not enough for high recall once the planner switches
 to the index (reproduced at 600 rows in the test suite). When the corpus
 grows, dense recall becomes approximate and should be re-measured.
 
-### B10. The agent does not use this retriever
+### B10. Answers are not measured
 
-`main.py` still answers with filesystem tools (directory listing, ripgrep,
-file read) over the notes directory. None of the retrieval quality above
-reaches the user until the agent is wired to `retrieve()`.
+The agent (`main.py`) calls `retrieve()` through its `search_notes` tool
+(`src/tools/search.py`, added 2026-09-02) and receives the fused top 10 as
+JSON, with no relevance cut-off and no citation format. Every number in this
+document stops at retrieval: nothing records which chunks the model used,
+whether it answered correctly, or whether it named the right note. Until that
+is measured, an improvement here can only be assumed to reach the user.
 
 ### B11. Fusion improves ordering but buys no recall over BGE-M3 alone
 

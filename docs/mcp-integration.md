@@ -130,8 +130,8 @@ routes the call back through the client. Decisions:
   because registration performs network IO. `main.py` calls
   `register_gmail_tools()` explicitly.
 - **Graceful degradation.** Any discovery failure — server not running,
-  network error — prints one warning and registers nothing; the REPL runs with
-  filesystem tools only.
+  network error — prints one warning and registers nothing; the REPL runs
+  without Gmail tools.
 
 **3. `src/tools/gmail.py` — the Gmail provider, which is almost nothing.** A
 six-name allowlist and a two-line function building the client from config.

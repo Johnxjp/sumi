@@ -4,7 +4,7 @@ from typing import Any
 
 from openrouter import OpenRouter
 
-from src.tools.core import run_tool, stringify_tool_result
+from src.tools.core import run_tool, stringify_tool_result, summarise_tool_result
 
 
 class Agent:
@@ -37,48 +37,60 @@ class Agent:
         turn = 0
 
         self.conversation_history.append({"role": "user", "content": query})
+        # Tool results with a registered summariser are replaced by its short
+        # stand-in once the turn ends, so they are not re-sent on every later call.
+        stubs: list[tuple[dict[str, Any], str]] = []
 
-        while turn < max_iterations:
-            response = self.client.chat.send(
-                model=self.model,
-                messages=self.conversation_history,
-                tools=tools,
-                stream=False,
-            )
-            print(
-                f"[info] Model response finish reason: {response.choices[0].finish_reason}, content: {response.choices[0].message.reasoning}"
-            )
+        try:
+            while turn < max_iterations:
+                response = self.client.chat.send(
+                    model=self.model,
+                    messages=self.conversation_history,
+                    tools=tools,
+                    stream=False,
+                )
+                print(
+                    f"[info] Model response finish reason: {response.choices[0].finish_reason}, content: {response.choices[0].message.reasoning}"
+                )
 
-            result = response.choices[0]
-            if result.finish_reason == "stop":
-                self.conversation_history.append(result.message)
-                return result.message.content
-            elif result.finish_reason == "tool_calls":
-                self.conversation_history.append(result.message)  # formatted correctly
-                for tool_call in result.message.tool_calls:
-                    print(
-                        f"[tool call] {tool_call.function.name}({tool_call.function.arguments})"
-                    )
-                    is_success, result = run_tool(
-                        tool_call.function.name, tool_call.function.arguments
-                    )
-                    result_str = stringify_tool_result(result)
+                result = response.choices[0]
+                if result.finish_reason == "stop":
+                    self.conversation_history.append(result.message)
+                    return result.message.content
+                elif result.finish_reason == "tool_calls":
                     self.conversation_history.append(
-                        {
+                        result.message
+                    )  # formatted correctly
+                    for tool_call in result.message.tool_calls:
+                        name = tool_call.function.name
+                        arguments = tool_call.function.arguments
+                        print(f"[tool call] {name}({arguments})")
+                        is_success, output = run_tool(name, arguments)
+                        output_str = stringify_tool_result(output)
+                        message = {
                             "role": "tool",
                             "tool_call_id": tool_call.id,
-                            "content": result_str
+                            "content": output_str
                             if is_success
-                            else f"Error: {result_str}",
+                            else f"Error: {output_str}",
                         }
+                        self.conversation_history.append(message)
+                        if is_success:
+                            stub = summarise_tool_result(name, arguments, output)
+                            if stub is not None:
+                                stubs.append((message, stub))
+                elif result.finish_reason == "length":
+                    # Basic Compaction
+                    print(
+                        "[info] Model response length exceeded. Compacting conversation history."
                     )
-            elif result.finish_reason == "length":
-                # Basic Compaction
-                print(
-                    "[info] Model response length exceeded. Compacting conversation history."
-                )
-                last_messages = self.conversation_history[-5:]  # Keep last 5 messages
-                self.clear_conversation_history()
-                self.conversation_history.extend(last_messages)
+                    last_messages = self.conversation_history[
+                        -5:
+                    ]  # Keep last 5 messages
+                    self.clear_conversation_history()
+                    self.conversation_history.extend(last_messages)
 
-            turn += 1
+                turn += 1
+        finally:
+            for message, stub in stubs:
+                message["content"] = stub

@@ -10,10 +10,11 @@ the topic rather than into this file or a chat message.
 
 A RAG system over a personal Notion export (~2,300 notes, ~6,000 chunks).
 
-Today: a terminal agent with filesystem and read-only Gmail tools, a hybrid
-retrieval stack over pgvector (two embedding models plus a lexical index,
-fused), a blind relevance-labelling UI, and an evaluation harness that picks
-the retrieval configuration. The agent does not use the retrieval stack yet.
+Today: a terminal agent with filesystem, note-search and read-only Gmail
+tools, a hybrid retrieval stack over pgvector (two embedding models plus a
+lexical index, fused), a blind relevance-labelling UI, and an evaluation
+harness that picks the retrieval configuration. The agent's `search_notes`
+tool calls the retrieval stack; the answers it produces are not measured yet.
 
 ## Repository outline
 
@@ -25,7 +26,7 @@ sumi/
 ├── data/                   gitignored: notes export, annotations, eval runs, queue
 └── sumi-backend/           all code. Python 3.12, uv. Run every uv command from here.
     ├── main.py             terminal REPL entry point
-    ├── src/agent.py, src/tools/   OpenRouter tool-calling agent; file + Gmail (MCP) tools
+    ├── src/agent.py, src/tools/   OpenRouter tool-calling agent; file, search + Gmail (MCP) tools
     ├── src/mcp_client.py   generic client for any streamable-HTTP MCP server
     ├── src/retrieval/      clean → chunk → embed → pgvector; hybrid search + RRF fusion
     ├── src/annotation/     FastAPI backend of the labelling UI (page in static/)
@@ -47,6 +48,7 @@ Documents and when to read them.
 - `docs/testing.md`: what a change must cover, how to run tests, the Postgres fixture.
 - `docs/coding-standards.md`: style rules, and how to explain work to the user.
 - `docs/plans/active/`, `docs/plans/completed/`: execution plans; completed ones are history, not current state.
+- `docs/todos/`: known gaps, one note per issue, with the evidence and a proposed fix. When the work ships, update the owning doc and move the note to `docs/todos/complete/`.
 
 ## Commands
 
@@ -86,4 +88,5 @@ so they only run with `-m` from there.
   pass. Standards: `docs/testing.md`.
 - Keep docs true. If a change makes a sentence in `docs/` false, fix it in the
   same change. New knowledge goes in the doc that owns the topic; this file
-  only points. A finished plan moves to `docs/plans/completed/`.
+  only points. A finished plan moves to `docs/plans/completed/`, a finished
+  todo to `docs/todos/complete/`.
