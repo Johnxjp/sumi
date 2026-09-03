@@ -10,19 +10,20 @@ from src.tools.registry import ToolRegistry, registry
 SEARCH_NOTES_SCHEMA = {
     "name": "search_notes",
     "description": (
-        "Searches the user's notes by meaning and by keywords and returns the "
-        f"{ACTIVE_CONFIG.top_k} best-matching chunks. A chunk is one passage of at most 2,000 "
-        "characters cut from a note; it is not the whole note. The result is a "
-        "JSON list ordered by rank, where rank 1 is the best match. Each item "
-        "has: 'rank'; 'chunk_id', the chunk's identifier, formed as the note's "
-        "path, then '#', then the chunk's position within that note (0 = first "
-        "chunk); 'source', the note's path, which you can pass to read_file to "
-        "read the entire note; 'title', the note's title; 'text', the full "
-        f"content of the chunk. The {ACTIVE_CONFIG.top_k} results are always the closest "
-        "matches available, with no relevance cut-off, so some may not be "
-        "relevant: judge each chunk by its content. Use this first for any "
-        "question about what the notes say. Use grep only to find an exact "
-        "title or string, and read_file to see the whole note a chunk came from."
+        "Searches the notes with hybrid semantic and lexical search and returns "
+        "the most relevant matches. Matches are chunks: sections of a note, "
+        "bounded by a character limit, not whole notes. "
+        "Use this when the user's request needs an answer to a question or "
+        "information found by similarity. Use grep when you need to find "
+        "specific terms in a title or note, and read_file to see a whole note. "
+        "Phrase the query with the words the note itself would contain and leave "
+        "out words that are not core to the request: 'What did I write in my "
+        "personal vision?' becomes 'personal vision', which is what the note "
+        "contains. "
+        f"Returns a JSON list of the {ACTIVE_CONFIG.top_k} closest chunks, most "
+        "relevant first. Each has rank, chunk_id, source (the note's path, which "
+        "read_file accepts), title and text. Not all are relevant to the query, "
+        "so judge each by its content before answering."
     ),
     "parameters": {
         "type": "object",

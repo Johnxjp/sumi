@@ -19,9 +19,14 @@ to `data_dir`. Its `search_notes` tool (`src/tools/search.py`, registered
 explicitly by `main.py`) calls `src/retrieval/retrieve.py:retrieve()` at the
 shipped configuration's `top_k` (10, from `src/retrieval/search_config.py`;
 the model cannot change it) and returns each chunk as `{rank, chunk_id, source, title, text}`,
-which `src/tools/core.py` serialises to JSON for the model. The system prompt
-tells the model to search first and to call `read_file` on a chunk's `source`
-when it needs the whole note. Once a turn ends, each `search_notes` result in
+which `src/tools/core.py` serialises to JSON for the model. The tool
+description says when to use it (questions, information found by similarity)
+rather than `grep` (specific terms in a title or note), and how to phrase the
+query: with the words the note itself would contain, dropping words that only
+describe the request. The system prompt adds the conversation behaviour: work
+out what the user actually wants before searching, split a multi-part request
+into several searches, say how the request was interpreted, and call
+`read_file` on a chunk's `source` for the whole note. Once a turn ends, each `search_notes` result in
 the history is replaced by a stub (the query, then every chunk's rank, title
 and source path), so ten chunks of text are not re-sent on every later call;
 a tool opts in by passing a `summarise` function to `register_tool`, and only
