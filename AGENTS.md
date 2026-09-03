@@ -48,7 +48,7 @@ Documents and when to read them.
 - `docs/testing.md`: what a change must cover, how to run tests, the Postgres fixture.
 - `docs/coding-standards.md`: style rules, and how to explain work to the user.
 - `docs/plans/active/`, `docs/plans/completed/`: execution plans; completed ones are history, not current state.
-- `docs/todos/`: known gaps, one note per issue, with the evidence and a proposed fix. Delete a note when the work ships and the owning doc is updated.
+- `docs/todos/`: known gaps, one note per issue, with the evidence and a proposed fix. When the work ships, update the owning doc and move the note to `docs/todos/complete/`.
 
 ## Commands
 
@@ -88,4 +88,5 @@ so they only run with `-m` from there.
   pass. Standards: `docs/testing.md`.
 - Keep docs true. If a change makes a sentence in `docs/` false, fix it in the
   same change. New knowledge goes in the doc that owns the topic; this file
-  only points. A finished plan moves to `docs/plans/completed/`.
+  only points. A finished plan moves to `docs/plans/completed/`, a finished
+  todo to `docs/todos/complete/`.
