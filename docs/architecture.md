@@ -16,8 +16,9 @@ running an OpenRouter tool-calling agent. Its filesystem tools
 (`src/tools/file.py`, registered through `src/tools/registry.py`) read the
 notes directory: read a file, list a directory, ripgrep search — all sandboxed
 to `data_dir`. Its `search_notes` tool (`src/tools/search.py`, registered
-explicitly by `main.py`) calls `src/retrieval/retrieve.py:retrieve()` with a
-fixed top 10 and returns each chunk as `{rank, chunk_id, source, title, text}`,
+explicitly by `main.py`) calls `src/retrieval/retrieve.py:retrieve()` at the
+shipped configuration's `top_k` (10, from `src/retrieval/search_config.py`;
+the model cannot change it) and returns each chunk as `{rank, chunk_id, source, title, text}`,
 which `src/tools/core.py` serialises to JSON for the model. The system prompt
 tells the model to search first and to call `read_file` on a chunk's `source`
 when it needs the whole note. Once a turn ends, each `search_notes` result in

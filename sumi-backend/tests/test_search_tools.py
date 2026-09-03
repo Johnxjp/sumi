@@ -2,9 +2,9 @@ from unittest import mock
 
 import pytest
 
+from src.retrieval.search_config import ACTIVE_CONFIG
 from src.tools.registry import ToolRegistry
 from src.tools.search import (
-    TOP_K,
     format_chunk,
     register_search_tools,
     search_notes,
@@ -29,7 +29,7 @@ def test_search_notes_returns_chunks_in_rank_order(retrieve):
 
     result = search_notes("q")
 
-    retrieve.assert_awaited_once_with("q", top_k=TOP_K)
+    retrieve.assert_awaited_once_with("q", top_k=ACTIVE_CONFIG.top_k)
     assert result == [
         {
             "rank": 1,
@@ -69,7 +69,7 @@ def test_register_search_tools_routes_to_search_notes(retrieve):
     assert schema["function"]["parameters"]["required"] == ["query"]
     assert reg.get_tool("search_notes")["summarise"] is summarise_search_result
     assert reg.call_tool("search_notes", {"query": "q"})[0]["chunk_id"] == "a.md#0"
-    retrieve.assert_awaited_once_with("q", top_k=TOP_K)
+    retrieve.assert_awaited_once_with("q", top_k=ACTIVE_CONFIG.top_k)
 
 
 def test_summarise_search_result_lists_every_chunk():

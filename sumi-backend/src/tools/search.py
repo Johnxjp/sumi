@@ -4,23 +4,21 @@ import asyncio
 from typing import Any
 
 from src.retrieval.retrieve import retrieve
+from src.retrieval.search_config import ACTIVE_CONFIG
 from src.tools.registry import ToolRegistry, registry
-
-# The depth every retrieval eval number is reported at.
-TOP_K = 10
 
 SEARCH_NOTES_SCHEMA = {
     "name": "search_notes",
     "description": (
         "Searches the user's notes by meaning and by keywords and returns the "
-        f"{TOP_K} best-matching chunks. A chunk is one passage of at most 2,000 "
+        f"{ACTIVE_CONFIG.top_k} best-matching chunks. A chunk is one passage of at most 2,000 "
         "characters cut from a note; it is not the whole note. The result is a "
         "JSON list ordered by rank, where rank 1 is the best match. Each item "
         "has: 'rank'; 'chunk_id', the chunk's identifier, formed as the note's "
         "path, then '#', then the chunk's position within that note (0 = first "
         "chunk); 'source', the note's path, which you can pass to read_file to "
         "read the entire note; 'title', the note's title; 'text', the full "
-        f"content of the chunk. The {TOP_K} results are always the closest "
+        f"content of the chunk. The {ACTIVE_CONFIG.top_k} results are always the closest "
         "matches available, with no relevance cut-off, so some may not be "
         "relevant: judge each chunk by its content. Use this first for any "
         "question about what the notes say. Use grep only to find an exact "
@@ -50,7 +48,7 @@ def format_chunk(rank: int, row: dict[str, Any]) -> dict[str, Any]:
 
 
 def search_notes(query: str) -> list[dict[str, Any]]:
-    rows = asyncio.run(retrieve(query, top_k=TOP_K))
+    rows = asyncio.run(retrieve(query, top_k=ACTIVE_CONFIG.top_k))
     return [format_chunk(rank, row) for rank, row in enumerate(rows, start=1)]
 
 
