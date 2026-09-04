@@ -4,8 +4,10 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
+import logfire
 from openrouter import OpenRouter
 
+from src.observability import build_genai_messages
 from src.tools.core import run_tool, stringify_tool_result, summarise_tool_result
 
 
@@ -35,11 +37,16 @@ class StreamedTurn:
         self.reasoning: list[str] = []
         self.tool_calls: dict[int, dict[str, str]] = {}
         self.finish_reason: str | None = None
+        self.usage: Any = None
 
     def add(self, chunk: Any) -> str:
         """Folds one chunk in and returns the reply text it carried, if any."""
         if chunk.error is not None:
             raise RuntimeError(f"model error: {chunk.error.message}")
+        # OpenRouter sends token counts on the final chunk, which carries no choices.
+        usage = getattr(chunk, "usage", None)
+        if usage is not None:
+            self.usage = usage
         if not chunk.choices:
             return ""
         choice = chunk.choices[0]
@@ -79,6 +86,21 @@ class StreamedTurn:
                 for _, call in sorted(self.tool_calls.items())
             ]
         return message
+
+
+def record_chat_response(
+    span: logfire.LogfireSpan, turn: StreamedTurn, message: dict[str, Any]
+) -> None:
+    """Puts the model's reply, stop reason and token counts on the chat span."""
+    _, output_messages = build_genai_messages([message])
+    span.set_attribute("gen_ai.output.messages", output_messages)
+    if turn.finish_reason:
+        span.set_attribute("gen_ai.response.finish_reasons", [turn.finish_reason])
+    if turn.reasoning:
+        span.set_attribute("reasoning", "".join(turn.reasoning))
+    if turn.usage is not None:
+        span.set_attribute("gen_ai.usage.input_tokens", turn.usage.prompt_tokens)
+        span.set_attribute("gen_ai.usage.output_tokens", turn.usage.completion_tokens)
 
 
 class Agent:
@@ -142,60 +164,81 @@ class Agent:
         stubs: list[tuple[dict[str, Any], str]] = []
 
         try:
-            for _ in range(max_iterations):
-                chunks = self.client.chat.send(
-                    model=self.model,
-                    messages=self.conversation_history,
-                    tools=tools,
-                    stream=True,
-                )
-                turn = StreamedTurn()
-                for chunk in chunks:
-                    text = turn.add(chunk)
-                    if text:
-                        yield TextDelta(text)
-                self._log(
-                    f"[info] Model turn: finish_reason={turn.finish_reason}, "
-                    f"text={len(''.join(turn.content))} chars, "
-                    f"tool_calls={len(turn.tool_calls)}, "
-                    f"reasoning: {''.join(turn.reasoning)}"
-                )
-
-                message = turn.build_message()
-                if turn.tool_calls:
-                    self.conversation_history.append(message)
-                    for call in message["tool_calls"]:
-                        name = call["function"]["name"]
-                        arguments = call["function"]["arguments"]
-                        yield ToolCall(name, arguments)
-                        self._log(f"[tool call] {name}({arguments})")
-                        is_success, output = run_tool(name, arguments)
-                        output_str = stringify_tool_result(output)
-                        tool_message = {
-                            "role": "tool",
-                            "tool_call_id": call["id"],
-                            "content": output_str
-                            if is_success
-                            else f"Error: {output_str}",
-                        }
-                        self.conversation_history.append(tool_message)
-                        if is_success:
-                            stub = summarise_tool_result(name, arguments, output)
-                            if stub is not None:
-                                stubs.append((tool_message, stub))
-                elif turn.finish_reason == "length":
-                    # Basic Compaction
-                    self._log(
-                        "[info] Model response length exceeded. Compacting conversation history."
+            with logfire.span(
+                "invoke_agent sumi",
+                **{
+                    "gen_ai.operation.name": "invoke_agent",
+                    "gen_ai.agent.name": "sumi",
+                },
+            ):
+                for _ in range(max_iterations):
+                    instructions, input_messages = build_genai_messages(
+                        self.conversation_history
                     )
-                    last_messages = self.conversation_history[
-                        -5:
-                    ]  # Keep last 5 messages
-                    self.clear_conversation_history()
-                    self.conversation_history.extend(last_messages)
-                else:
-                    self.conversation_history.append(message)
-                    return
+                    turn = StreamedTurn()
+                    with logfire.span(
+                        "chat {gen_ai.request.model}",
+                        **{
+                            "gen_ai.operation.name": "chat",
+                            "gen_ai.provider.name": "openrouter",
+                            "gen_ai.request.model": self.model,
+                            "gen_ai.system_instructions": instructions,
+                            "gen_ai.input.messages": input_messages,
+                        },
+                    ) as span:
+                        chunks = self.client.chat.send(
+                            model=self.model,
+                            messages=self.conversation_history,
+                            tools=tools,
+                            stream=True,
+                        )
+                        for chunk in chunks:
+                            text = turn.add(chunk)
+                            if text:
+                                yield TextDelta(text)
+                        message = turn.build_message()
+                        record_chat_response(span, turn, message)
+                    self._log(
+                        f"[info] Model turn: finish_reason={turn.finish_reason}, "
+                        f"text={len(''.join(turn.content))} chars, "
+                        f"tool_calls={len(turn.tool_calls)}, "
+                        f"reasoning: {''.join(turn.reasoning)}"
+                    )
+
+                    if turn.tool_calls:
+                        self.conversation_history.append(message)
+                        for call in message["tool_calls"]:
+                            name = call["function"]["name"]
+                            arguments = call["function"]["arguments"]
+                            yield ToolCall(name, arguments)
+                            self._log(f"[tool call] {name}({arguments})")
+                            is_success, output = run_tool(name, arguments)
+                            output_str = stringify_tool_result(output)
+                            tool_message = {
+                                "role": "tool",
+                                "tool_call_id": call["id"],
+                                "content": output_str
+                                if is_success
+                                else f"Error: {output_str}",
+                            }
+                            self.conversation_history.append(tool_message)
+                            if is_success:
+                                stub = summarise_tool_result(name, arguments, output)
+                                if stub is not None:
+                                    stubs.append((tool_message, stub))
+                    elif turn.finish_reason == "length":
+                        # Basic Compaction
+                        self._log(
+                            "[info] Model response length exceeded. Compacting conversation history."
+                        )
+                        last_messages = self.conversation_history[
+                            -5:
+                        ]  # Keep last 5 messages
+                        self.clear_conversation_history()
+                        self.conversation_history.extend(last_messages)
+                    else:
+                        self.conversation_history.append(message)
+                        return
         except Exception:
             del self.conversation_history[history_before:]
             raise

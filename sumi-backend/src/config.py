@@ -55,6 +55,10 @@ class Settings(BaseSettings):
         default="",
         description="Gmail address the workspace-mcp server acts on. Set via USER_GOOGLE_EMAIL.",
     )
+    logfire_api_key: str = Field(
+        default="",
+        description="Pydantic Logfire write token. Set via LOGFIRE_API_KEY; empty means traces are not sent.",
+    )
 
 
 app_config = Settings()

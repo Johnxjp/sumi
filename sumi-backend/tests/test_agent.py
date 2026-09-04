@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from unittest import mock
 
@@ -263,4 +264,65 @@ def test_stream_compacts_history_when_the_reply_is_cut_off():
         {"role": "user", "content": "old 5"},
         {"role": "user", "content": "question"},
         {"role": "assistant", "content": "answer"},
+    ]
+
+
+@mock.patch("src.agent.summarise_tool_result", autospec=True)
+@mock.patch("src.agent.run_tool", autospec=True)
+def test_stream_traces_the_run_as_one_agent_span_over_a_chat_span_per_turn(
+    run_tool, summarise, capfire
+):
+    run_tool.return_value = (True, "note text")
+    summarise.return_value = None
+    agent = make_agent(
+        [
+            [
+                make_chunk(
+                    tool_calls=[
+                        make_tool_call_delta(
+                            0, "c1", "read_file", '{"filename": "a.md"}'
+                        )
+                    ],
+                    finish_reason="tool_calls",
+                ),
+                SimpleNamespace(
+                    choices=[],
+                    error=None,
+                    usage=SimpleNamespace(prompt_tokens=11, completion_tokens=22),
+                ),
+            ],
+            [make_chunk(content="answer", reasoning="thinking", finish_reason="stop")],
+        ]
+    )
+
+    assert agent.run("question", tools=[]) == "answer"
+
+    exported = capfire.exporter.exported_spans_as_dict()
+    [run] = [span for span in exported if span["name"] == "invoke_agent sumi"]
+    chats = [span for span in exported if span["name"] == "chat {gen_ai.request.model}"]
+
+    assert run["attributes"]["gen_ai.agent.name"] == "sumi"
+    assert run["attributes"]["gen_ai.operation.name"] == "invoke_agent"
+    assert len(chats) == 2
+    assert all(chat["parent"]["span_id"] == run["context"]["span_id"] for chat in chats)
+    assert [
+        json.loads(chat["attributes"]["gen_ai.response.finish_reasons"])
+        for chat in chats
+    ] == [["tool_calls"], ["stop"]]
+    assert chats[0]["attributes"]["gen_ai.usage.input_tokens"] == 11
+    assert chats[0]["attributes"]["gen_ai.usage.output_tokens"] == 22
+    assert chats[1]["attributes"]["reasoning"] == "thinking"
+
+    assert json.loads(chats[0]["attributes"]["gen_ai.system_instructions"]) == [
+        {"type": "text", "content": "sys"}
+    ]
+    assert json.loads(chats[0]["attributes"]["gen_ai.input.messages"]) == [
+        {"role": "user", "parts": [{"type": "text", "content": "question"}]}
+    ]
+    assert json.loads(chats[1]["attributes"]["gen_ai.input.messages"])[-1] == {
+        "role": "tool",
+        "parts": [{"type": "tool_call_response", "id": "c1", "response": "note text"}],
+    }
+    assert json.loads(chats[1]["attributes"]["gen_ai.output.messages"]) == [
+        {"role": "assistant", "parts": [{"type": "text", "content": "answer"}]}
     ]

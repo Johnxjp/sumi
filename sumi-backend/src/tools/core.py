@@ -3,16 +3,34 @@
 import json
 from typing import Any
 
+import logfire
+
+from src.observability import truncate
 from src.tools.registry import registry
 
 
 def run_tool(name: str, arguments: str) -> tuple[bool, Any]:
     """Returns (success, result) where success is True if the tool ran successfully, and result is the tool's output or error message."""
-    try:
-        arguments = json.loads(arguments)
-        return True, registry.call_tool(name, arguments)
-    except Exception as e:  # noqa: BLE001 - tool errors go back to the model as text
-        return False, f"{type(e).__name__}: {e}"
+    with logfire.span(
+        "execute_tool {gen_ai.tool.name}",
+        **{
+            "gen_ai.operation.name": "execute_tool",
+            "gen_ai.tool.name": name,
+            "gen_ai.tool.call.arguments": arguments,
+        },
+    ) as span:
+        try:
+            result = registry.call_tool(name, json.loads(arguments))
+        except Exception as e:  # noqa: BLE001 - tool errors go back to the model as text
+            message = f"{type(e).__name__}: {e}"
+            span.set_attribute("gen_ai.tool.call.result", message)
+            span.set_attribute("success", False)
+            return False, message
+        span.set_attribute(
+            "gen_ai.tool.call.result", truncate(stringify_tool_result(result))
+        )
+        span.set_attribute("success", True)
+        return True, result
 
 
 def summarise_tool_result(name: str, arguments: str, result: Any) -> str | None:
