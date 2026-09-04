@@ -1,34 +1,17 @@
 # AGENTS.md
 
-A map of the sumi repository for coding agents.
+Guidelines for agents working in the Sumi codebase.
+Sumi is an agent assisting with search and retrieval over personal notes.
 
-`docs/` is the system of record — a fact that is not in the repository does
-not exist to an agent, so when you learn one, write it into the doc that owns
-the topic rather than into this file or a chat message.
-
-## What sumi is
-
-A RAG system over a personal Notion export (~2,300 notes, ~6,000 chunks).
-
-Today: an agent with filesystem, note-search and read-only Gmail tools,
-used from a terminal REPL or a web chat page that streams its replies; a
-hybrid retrieval stack over pgvector (two embedding models plus a lexical
-index, fused); a blind relevance-labelling UI; and an evaluation harness
-that picks the retrieval configuration. The agent's `search_notes` tool
-calls the retrieval stack; the answers it produces are not measured yet.
-A job that syncs the notes straight from Notion, replacing the hand-made
-export, is built but not switched on: `docs/plans/active/notion-sync.md`.
-
-## Repository outline
+## Repository Structure
 
 ```
 sumi/
-├── AGENTS.md, CLAUDE.md    this map (CLAUDE.md only includes it)
-├── .claude/settings.json   hook: ruff on every edited .py file
+├── AGENTS.md, CLAUDE.md    Agent guidelines
 ├── docs/                   system of record — index below
-├── data/                   gitignored: notes export, annotations, eval runs, queue
-├── sumi-frontend/          web chat page. Next.js + TypeScript, pnpm. Run pnpm commands from here.
-└── sumi-backend/           all Python code. Python 3.12, uv. Run every uv command from here.
+├── data/                   notes export, annotations, eval runs, queue (gitignored)
+├── sumi-frontend/          Web chat page. Next.js + TypeScript, pnpm. Run pnpm commands from here.
+└── sumi-backend/           Backend server, agent code, retrieval and evals. Python 3.12, uv. Run every uv command from here.
     ├── main.py             terminal REPL entry point
     ├── src/bootstrap.py    system prompt + tool registration, shared by the REPL and the web chat
     ├── src/agent.py, src/tools/   OpenRouter tool-calling agent (an event stream); file, search + Gmail (MCP) tools
@@ -43,6 +26,53 @@ sumi/
     └── tests/              pytest; `postgres` marker for tests needing a local DB
 ```
 
+## Commands
+
+### Backend Specific
+Run inside `sumi-backend`
+
+```
+uv sync              # install
+uv run pytest        # test all
+uv run ruff check . --fix && uv run ruff format .  # lint and format
+uv run main.py       # agent repl
+```
+
+### Frontend Specific
+```
+pnpm install     # Install dependencies
+pnpm test        # test
+pnpm lint        # lint
+pnpm build       # Build all packages
+pnpm dev         # Dev server
+```
+
+### Web App
+```
+uv run uvicorn src.chat.app:app --port 8766 # start server. run in sumi-backend
+pnpm dev # start app. (localhost:3000). run in sumi-frontend 
+```
+
+### Scripts
+```
+uv run python -m scripts.sync  # sync notes. Detail: @docs/designs/notion-sync.md
+uv run python -m scripts.search "your query"  # search query
+uv run python -m evals.retrieval.selftest  # retrieval evals. see script for commands
+
+# Generate eval queries
+1. uv run python -m evals.generate_notes_sample
+2. uv run python -m evals.generate_queries
+
+# Build the lexical index:
+1. uv run python -m scripts.ingest --embedder <qwen / bge-m3> 
+2. uv run python -m scripts.build_fts
+```
+
+### Annotation UI
+```
+uv run uvicorn src.annotation.app:app --reload --port 8765  # start app
+```
+
 ## Docs index
 
 Documents and when to read them.
@@ -54,20 +84,6 @@ Documents and when to read them.
 - `docs/testing.md`: what a change must cover, how to run tests, the Postgres fixture.
 - `docs/coding-standards.md`: style rules, and how to explain work to the user.
 
-## Commands
-
-Run from `sumi-backend/`. Scripts and eval modules use absolute `src.` imports,
-so they only run with `-m` from there.
-
-- Install, test, lint: `uv sync` · `uv run pytest` · `uv run ruff check . --fix && uv run ruff format .`
-- Agent REPL: `uv run main.py` (Gmail tools need `./scripts/run_gmail_mcp.sh` running first)
-- Web chat: `uv run uvicorn src.chat.app:app --port 8766`, then from `sumi-frontend/`: `pnpm dev` (→ http://localhost:3000). Frontend checks: `pnpm test` · `pnpm lint` · `pnpm build`. Detail: `docs/designs/chat-ui.md`
-- Sync the notes from Notion (built, not switched on yet — see `docs/plans/active/notion-sync.md`): `uv run python -m scripts.sync` · `--full` · `--dry-run` · `--limit 20` · `--mirror-only`. Needs `NOTION_TOKEN`. Detail: `docs/designs/notion-sync.md`
-- Ingest a folder that is not a Notion workspace (`data/mem-export`), then build the lexical index: `uv run python -m scripts.ingest --embedder qwen` (and `bge-m3`), then `uv run python -m scripts.build_fts`
-- Search: `uv run python -m scripts.search "your query"`
-- Retrieval evals: `uv run python -m evals.retrieval.selftest` · `run <experiment>` · `compare` · `diagnose <run_id>`
-- Annotation UI: `uv run uvicorn src.annotation.app:app --reload --port 8765`
-- Generate eval queries: `uv run python -m evals.generate_notes_sample`, then `uv run python -m evals.generate_queries`
 
 ## Invariants — these break silently
 
@@ -89,6 +105,7 @@ so they only run with `-m` from there.
 
 ## Working rules
 
+- Backend scripts and eval modules use absolute `src.`
 - Explain plainly: define a term the first time you use it and assume no
   knowledge of project history — in replies, commit messages and PR bodies.
   Full rule: `docs/coding-standards.md`.
