@@ -1,6 +1,6 @@
 import pytest
 
-from src.observability import build_genai_messages, truncate
+from src.observability import build_genai_messages, trim_chunk_text, truncate
 
 
 def test_build_genai_messages_splits_instructions_from_the_conversation():
@@ -89,3 +89,38 @@ def test_build_genai_messages_keeps_unparsable_tool_arguments_as_text():
 )
 def test_truncate(text, limit, expected):
     assert truncate(text, limit) == expected
+
+
+def test_trim_chunk_text_shortens_the_text_and_keeps_the_rest():
+    chunks = [
+        {
+            "rank": 1,
+            "chunk_id": "a.md#0",
+            "source": "a.md",
+            "title": "A",
+            "text": "x" * 250,
+        },
+        {
+            "rank": 2,
+            "chunk_id": "b.md#0",
+            "source": "b.md",
+            "title": "B",
+            "text": "short",
+        },
+    ]
+
+    trimmed = trim_chunk_text(chunks)
+
+    assert trimmed[0]["text"] == "x" * 100 + "… [150 more characters]"
+    assert trimmed[1]["text"] == "short"
+    assert [chunk["chunk_id"] for chunk in trimmed] == ["a.md#0", "b.md#0"]
+    assert [chunk["rank"] for chunk in trimmed] == [1, 2]
+    assert chunks[0]["text"] == "x" * 250, "the caller's chunks must not be mutated"
+
+
+@pytest.mark.parametrize(
+    "result",
+    ["a plain string", ["a.md", "b.md"], [{"rank": 1, "source": "a.md"}]],
+)
+def test_trim_chunk_text_leaves_results_without_chunk_text_alone(result):
+    assert trim_chunk_text(result) == result

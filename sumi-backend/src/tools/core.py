@@ -5,7 +5,7 @@ from typing import Any
 
 import logfire
 
-from src.observability import truncate
+from src.observability import trim_chunk_text, truncate
 from src.tools.registry import registry
 
 
@@ -27,7 +27,8 @@ def run_tool(name: str, arguments: str) -> tuple[bool, Any]:
             span.set_attribute("success", False)
             return False, message
         span.set_attribute(
-            "gen_ai.tool.call.result", truncate(stringify_tool_result(result))
+            "gen_ai.tool.call.result",
+            truncate(stringify_tool_result(trim_chunk_text(result))),
         )
         span.set_attribute("success", True)
         return True, result

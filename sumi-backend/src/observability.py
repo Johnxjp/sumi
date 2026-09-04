@@ -12,6 +12,7 @@ import logfire
 from src.config import app_config
 
 TOOL_RESULT_LIMIT = 10_000
+CHUNK_TEXT_LIMIT = 100
 
 
 def configure_logfire() -> None:
@@ -30,6 +31,22 @@ def truncate(text: str, limit: int = TOOL_RESULT_LIMIT) -> str:
     if len(text) <= limit:
         return text
     return f"{text[:limit]}… [{len(text) - limit} more characters]"
+
+
+def trim_chunk_text(result: Any) -> Any:
+    """Shortens the `text` of each chunk a tool returned.
+
+    A trace only needs enough text to recognise the chunk; the rank, id, source
+    and title beside it are what make the result worth reading.
+    """
+    if not isinstance(result, list):
+        return result
+    return [
+        {**item, "text": truncate(item["text"], CHUNK_TEXT_LIMIT)}
+        if isinstance(item, dict) and isinstance(item.get("text"), str)
+        else item
+        for item in result
+    ]
 
 
 def decode_arguments(arguments: str | None) -> Any:

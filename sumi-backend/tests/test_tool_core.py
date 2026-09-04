@@ -53,3 +53,19 @@ def test_run_tool_traces_a_failure_as_the_span_result(registry, capfire):
         span["attributes"]["gen_ai.tool.call.result"]
         == "ValueError: unknown tool: nope"
     )
+
+
+@mock.patch("src.tools.core.registry", autospec=True)
+def test_run_tool_trims_chunk_text_in_the_span_but_not_in_the_result(registry, capfire):
+    chunks = [{"rank": 1, "chunk_id": "a.md#0", "text": "x" * 250}]
+    registry.call_tool.return_value = chunks
+
+    is_success, result = run_tool("search_notes", '{"query": "q"}')
+
+    assert (is_success, result) == (True, chunks), "the model still gets the full text"
+    [span] = capfire.exporter.exported_spans_as_dict()
+    assert (
+        "x" * 100 + "… [150 more characters]"
+        in span["attributes"]["gen_ai.tool.call.result"]
+    )
+    assert "x" * 101 not in span["attributes"]["gen_ai.tool.call.result"]

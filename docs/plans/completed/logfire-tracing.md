@@ -23,7 +23,11 @@ trace per agent run:
   `gen_ai.output.messages`), the stop reason, the model's reasoning, and token
   counts.
 - `execute_tool {gen_ai.tool.name}` per tool call, with the arguments, the
-  result (truncated at 10,000 characters) and whether it succeeded.
+  result and whether it succeeded. Each chunk's `text` is cut to 100 characters
+  first, and the whole result to 10,000. The rank, id, source and title beside
+  the text are what make a result worth reading, and keeping the text short
+  means every chunk fits: the 10,000-character cap alone used to sever the
+  result part-way, hiding the last few chunks completely.
 - In the web chat, the HTTP request is the root span
   (`logfire.instrument_fastapi`).
 
@@ -32,9 +36,10 @@ conventions, which is what makes Logfire render a model call as a readable
 transcript rather than a bag of attributes. `src/observability.py` holds the
 setup and the history-to-GenAI conversion.
 
-Content is captured in full — messages, replies, tool arguments and truncated
-tool results — which was a deliberate choice. Logfire's default scrubbing stays
-on, so text near words like "password" or "token" is replaced with a marker.
+Content is captured — messages, replies, tool arguments and shortened tool
+results — which was a deliberate choice. Logfire's default scrubbing stays on,
+so text near words like "password" or "token" is replaced with a marker. Only
+the trace is shortened: the model still receives the full text.
 
 `LOGFIRE_API_KEY` in `.env` is the credential. It is optional: empty means
 nothing is sent, and the token is passed explicitly to `logfire.configure()`, so
