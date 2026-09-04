@@ -4,8 +4,9 @@ import asyncio
 from typing import Any
 
 from src.retrieval.retrieve import retrieve
-from src.retrieval.search_config import ACTIVE_CONFIG
+from src.retrieval.search_config import ACTIVE_CONFIG, ACTIVE_CONFIG_NAME
 from src.tools.registry import ToolRegistry, registry
+from src.usage import record_search
 
 SEARCH_NOTES_SCHEMA = {
     "name": "search_notes",
@@ -58,7 +59,9 @@ def format_chunk(rank: int, row: dict[str, Any]) -> dict[str, Any]:
 
 def search_notes(query: str) -> list[dict[str, Any]]:
     rows = asyncio.run(retrieve(query, top_k=ACTIVE_CONFIG.top_k))
-    return [format_chunk(rank, row) for rank, row in enumerate(rows, start=1)]
+    chunks = [format_chunk(rank, row) for rank, row in enumerate(rows, start=1)]
+    record_search(query, chunks, ACTIVE_CONFIG_NAME)
+    return chunks
 
 
 def summarise_search_result(

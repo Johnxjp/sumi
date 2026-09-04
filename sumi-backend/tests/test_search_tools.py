@@ -2,7 +2,7 @@ from unittest import mock
 
 import pytest
 
-from src.retrieval.search_config import ACTIVE_CONFIG
+from src.retrieval.search_config import ACTIVE_CONFIG, ACTIVE_CONFIG_NAME
 from src.tools.registry import ToolRegistry
 from src.tools.search import (
     format_chunk,
@@ -97,3 +97,14 @@ def test_summarise_search_result_lists_every_chunk_by_path():
 
     assert header.startswith("search_notes('q') returned 2 chunks.")
     assert lines == ["1. A — Journal/A.md", "2. C — Life OS/C.md"]
+
+
+@mock.patch("src.tools.search.retrieve", autospec=True)
+def test_searching_writes_a_usage_record(retrieve):
+    """Every search is logged, so real queries can be labelled later."""
+    retrieve.return_value = [make_row(f"{PAGE_A}#0")]
+
+    with mock.patch("src.tools.search.record_search", autospec=True) as record:
+        chunks = search_notes("napoleon leadership")
+
+    record.assert_called_once_with("napoleon leadership", chunks, ACTIVE_CONFIG_NAME)

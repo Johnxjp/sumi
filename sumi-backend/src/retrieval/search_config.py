@@ -44,6 +44,9 @@ FTS_NOTION_ARM = replace(FTS_ARM, table="chunks_fts_notion")
 # train NDCG@10 0.712 against 0.567 for the best single arm. rrf_k is the lever
 # that mattered — at the usual 60, two arms agreeing at rank 40 outvote one arm's
 # rank-3 hit, and judged positives fell out of the top 10.
+# Names the shipped configuration in the usage log, so a logged search can be
+# read against the retrieval settings that answered it.
+ACTIVE_CONFIG_NAME = "rrf-3arm-k5"
 ACTIVE_CONFIG = RetrievalConfig(
     arms=(
         replace(QWEN_ARM, depth=50),
