@@ -31,6 +31,10 @@ class Settings(BaseSettings):
         default=768,
         description="Output dimensionality for embeddings. gemini-embedding-2 auto-normalizes truncated dimensions.",
     )
+    logfire_api_key: str = Field(
+        default="",
+        description="Logfire write token for tracing. Set via LOGFIRE_API_KEY environment variable.",
+    )
     breadbowl_api_url: str = Field(
         default="",
         description="BreadBowl API base URL. Set via BREADBOWL_API_URL environment variable.",
