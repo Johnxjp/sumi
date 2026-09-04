@@ -59,6 +59,10 @@ class Settings(BaseSettings):
         default="",
         description="Gmail address the workspace-mcp server acts on. Set via USER_GOOGLE_EMAIL.",
     )
+    notion_token: str = Field(
+        default="",
+        description="Secret of the read-only Notion internal integration the sync uses. Set via NOTION_TOKEN.",
+    )
 
 
 app_config = Settings()
