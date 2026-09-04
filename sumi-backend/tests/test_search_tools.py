@@ -11,13 +11,16 @@ from src.tools.search import (
     summarise_search_result,
 )
 
+PAGE_A = "336d52d026fc8076ade8f7b2612f1fef"
+PAGE_C = "146d52d026fc8065a351fc6e2ea53f8b"
 
-def make_row(row_id: str, title: str = "Title") -> dict:
+
+def make_row(row_id: str, title: str = "Title", path: str = "Journal/A.md") -> dict:
     return {
         "id": row_id,
         "text": f"text of {row_id}",
         "source": row_id.split("#")[0],
-        "metadata": {"title": title},
+        "metadata": {"title": title, "path": path},
         "score": 0.3,
         "arms": {"qwen": 1, "fts": 4},
     }
@@ -25,7 +28,10 @@ def make_row(row_id: str, title: str = "Title") -> dict:
 
 @mock.patch("src.tools.search.retrieve", autospec=True)
 def test_search_notes_returns_chunks_in_rank_order(retrieve):
-    retrieve.return_value = [make_row("a.md#0", "A"), make_row("b/c.md#2", "C")]
+    retrieve.return_value = [
+        make_row(f"{PAGE_A}#0", "A", "Journal/A.md"),
+        make_row(f"{PAGE_C}#2", "C", "Life OS/C.md"),
+    ]
 
     result = search_notes("q")
 
@@ -33,33 +39,42 @@ def test_search_notes_returns_chunks_in_rank_order(retrieve):
     assert result == [
         {
             "rank": 1,
-            "chunk_id": "a.md#0",
-            "source": "a.md",
+            "chunk_id": f"{PAGE_A}#0",
+            "page_id": PAGE_A,
+            "path": "Journal/A.md",
             "title": "A",
-            "text": "text of a.md#0",
+            "text": f"text of {PAGE_A}#0",
         },
         {
             "rank": 2,
-            "chunk_id": "b/c.md#2",
-            "source": "b/c.md",
+            "chunk_id": f"{PAGE_C}#2",
+            "page_id": PAGE_C,
+            "path": "Life OS/C.md",
             "title": "C",
-            "text": "text of b/c.md#2",
+            "text": f"text of {PAGE_C}#2",
         },
     ]
 
 
 @pytest.mark.parametrize(
-    ("metadata", "expected"),
-    [({"title": "T"}, "T"), ({}, ""), (None, "")],
+    ("metadata", "title", "path"),
+    [
+        ({"title": "T", "path": "p.md"}, "T", "p.md"),
+        ({"title": "T"}, "T", ""),
+        ({}, "", ""),
+        (None, "", ""),
+    ],
+    ids=["both", "no-path", "empty-metadata", "no-metadata"],
 )
-def test_format_chunk_title(metadata, expected):
-    row = {**make_row("a.md#0"), "metadata": metadata}
-    assert format_chunk(1, row)["title"] == expected
+def test_format_chunk_reads_title_and_path_from_metadata(metadata, title, path):
+    row = {**make_row(f"{PAGE_A}#0"), "metadata": metadata}
+    chunk = format_chunk(1, row)
+    assert (chunk["title"], chunk["path"]) == (title, path)
 
 
 @mock.patch("src.tools.search.retrieve", autospec=True)
 def test_register_search_tools_routes_to_search_notes(retrieve):
-    retrieve.return_value = [make_row("a.md#0")]
+    retrieve.return_value = [make_row(f"{PAGE_A}#0")]
     reg = ToolRegistry()
 
     register_search_tools(reg)
@@ -68,17 +83,17 @@ def test_register_search_tools_routes_to_search_notes(retrieve):
     assert schema["function"]["name"] == "search_notes"
     assert schema["function"]["parameters"]["required"] == ["query"]
     assert reg.get_tool("search_notes")["summarise"] is summarise_search_result
-    assert reg.call_tool("search_notes", {"query": "q"})[0]["chunk_id"] == "a.md#0"
+    assert reg.call_tool("search_notes", {"query": "q"})[0]["chunk_id"] == f"{PAGE_A}#0"
     retrieve.assert_awaited_once_with("q", top_k=ACTIVE_CONFIG.top_k)
 
 
-def test_summarise_search_result_lists_every_chunk():
+def test_summarise_search_result_lists_every_chunk_by_path():
     chunks = [
-        format_chunk(1, make_row("a.md#0", "A")),
-        format_chunk(2, make_row("b/c.md#2", "C")),
+        format_chunk(1, make_row(f"{PAGE_A}#0", "A", "Journal/A.md")),
+        format_chunk(2, make_row(f"{PAGE_C}#2", "C", "Life OS/C.md")),
     ]
 
     header, *lines = summarise_search_result({"query": "q"}, chunks).splitlines()
 
     assert header.startswith("search_notes('q') returned 2 chunks.")
-    assert lines == ["1. A — a.md", "2. C — b/c.md"]
+    assert lines == ["1. A — Journal/A.md", "2. C — Life OS/C.md"]
