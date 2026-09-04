@@ -61,12 +61,16 @@ def build_result_rows(
     for rank, row in enumerate(rows, start=1):
         gain = None if qrel is None else lookup_gain(qrel, row)
         text = row.get("text") or ""
+        metadata = row.get("metadata") or {}
         records.append(
             {
                 "rank": rank,
                 "id": row.get("id"),
                 "source": row.get("source"),
-                "title": (row.get("metadata") or {}).get("title"),
+                # The note's file, so `diagnose` can name a result rather than
+                # printing a page id. Absent on the export-built tables.
+                "path": metadata.get("path"),
+                "title": metadata.get("title"),
                 "score": row.get("score"),
                 "arms": row.get("arms", {}),
                 "gain": gain,
@@ -254,6 +258,11 @@ async def run_experiment(
         "train": aggregate(records, "train"),
         "val": aggregate(records, "val"),
         "unjudged_queued": queued,
+        # Generated queries whose note has no Notion page id, so they can never
+        # be scored as a hit. One exported file is an attachment, not a page.
+        "generated_without_page_id": sum(
+            1 for file_query in file_queries if not file_query.has_page_id
+        ),
     }
     persist_run(runs_dir / run_id, config, metrics, records)
     return metrics

@@ -107,14 +107,17 @@ def test_match_by_chunk_id_then_text(
     assert lookup_gain(qrel, row) == expected_gain
 
 
-def test_load_file_queries_reads_nested_key_and_strips_prefix(tmp_path):
+PAGE_ID = "336d52d026fc8076ade8f7b2612f1fef"
+
+
+def write_generated_queries(tmp_path, source_file: str):
     path = tmp_path / "queries.json"
     path.write_text(
         json.dumps(
             {
                 "queries": [
                     {
-                        "source_file": "../data/notion-export-markdown/Journal/a.md",
+                        "source_file": source_file,
                         "query": "what did i write?",
                         "passage": "ignored",
                     }
@@ -123,6 +126,28 @@ def test_load_file_queries_reads_nested_key_and_strips_prefix(tmp_path):
         ),
         encoding="utf-8",
     )
+    return path
+
+
+def test_load_file_queries_maps_a_note_path_to_its_page_id(tmp_path):
+    path = write_generated_queries(
+        tmp_path,
+        f"../data/notion-export-markdown/Journal/Take responsibility {PAGE_ID}.md",
+    )
+
     [file_query] = load_file_queries(path)
-    assert file_query.source == "Journal/a.md"
+
+    assert file_query.source == PAGE_ID
+    assert file_query.has_page_id is True
     assert file_query.query == "what did i write?"
+
+
+def test_a_note_without_a_page_id_can_never_be_hit(tmp_path):
+    path = write_generated_queries(
+        tmp_path, "../data/notion-export-markdown/Journal/career-direction.md"
+    )
+
+    [file_query] = load_file_queries(path)
+
+    assert file_query.has_page_id is False
+    assert file_query.source != PAGE_ID
