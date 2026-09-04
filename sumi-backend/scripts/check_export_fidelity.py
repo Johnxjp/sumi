@@ -227,18 +227,18 @@ def main() -> None:
         titles, mirror_paths = build_link_tables(objects, places)
         schema_orders = {obj.id: obj.schema_order for obj in containers}
 
-        report = FidelityReport()
+        skipped_missing = skipped_edited = failed = 0
         comparisons: list[PageComparison] = []
         for page in pages:
             obj = objects.get(page.page_id)
             if obj is None:
-                report.skipped_missing += 1
+                skipped_missing += 1
                 continue
             if (
                 obj.last_edited_time is not None
                 and obj.last_edited_time >= DEFAULT_EDITED_BEFORE
             ):
-                report.skipped_edited += 1
+                skipped_edited += 1
                 continue
             enhanced = read_cached(args.cache_dir, page.page_id)
             if enhanced is None:
@@ -246,7 +246,7 @@ def main() -> None:
                     enhanced = client.get_page_markdown(page.page_id)
                 except NotionError as error:
                     print(f"  {page.page_id}: {error}")
-                    report.failed += 1
+                    failed += 1
                     continue
                 write_cached(args.cache_dir, page.page_id, enhanced)
             synced = render_synced_page(
@@ -257,9 +257,9 @@ def main() -> None:
         client.close()
 
     summary = summarise(comparisons)
-    summary.skipped_edited = report.skipped_edited
-    summary.skipped_missing = report.skipped_missing
-    summary.failed = report.failed
+    summary.skipped_edited = skipped_edited
+    summary.skipped_missing = skipped_missing
+    summary.failed = failed
     print(summary.describe())
 
 

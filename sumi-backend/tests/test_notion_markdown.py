@@ -170,6 +170,21 @@ def test_a_table_becomes_a_pipe_table():
     )
 
 
+def test_table_cells_go_through_the_inline_rules():
+    enhanced = (
+        '<table header-row="true">\n'
+        "\t<tr><td>Note</td><td>Link</td></tr>\n"
+        '\t<tr><td><span color="pink">Coloured</span></td>'
+        f'<td><mention-page url="https://app.notion.com/p/{PAGE_ID}"/></td></tr>\n'
+        "</table>"
+    )
+
+    assert normalise(enhanced, LINKS).splitlines()[-1] == (
+        "| Coloured | [Personal Mission Statement]"
+        f"(Life%20OS/Personal%20Mission%20Statement%20{PAGE_ID}.md) |"
+    )
+
+
 def test_a_table_without_a_header_row_gets_an_empty_one():
     enhanced = "<table>\n\t<tr><td>a</td><td>b</td></tr>\n</table>"
     assert normalise(enhanced) == "|  |  |\n| --- | --- |\n| a | b |"

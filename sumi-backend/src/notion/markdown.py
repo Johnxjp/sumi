@@ -198,7 +198,7 @@ def convert_container(
         dropped[tag] += 1
         return []
     if tag == "table":
-        return [build_table(region)]
+        return [build_table(region, links, dropped)]
     inner = get_container_inner(region, tag)
     if tag in TRANSPARENT_TAGS:
         return convert_lines(inner, links, dropped)
@@ -229,11 +229,21 @@ def build_callout(
     return Block(tuple(lines))
 
 
-def build_table(region: Sequence[str]) -> Block:
-    """A pipe table, with an empty header when Notion says there is no header row."""
+def build_table(
+    region: Sequence[str], links: LinkResolver, dropped: Counter[str]
+) -> Block:
+    """A pipe table, with an empty header when Notion says there is no header row.
+
+    A cell can hold anything a line can — a page mention, a date — so its text
+    goes through the same inline rules, then onto one line, because a pipe
+    table cannot contain a line break.
+    """
     text = "\n".join(region)
     rows = [
-        [" ".join(SPAN_RE.sub("", cell).split()) for cell in TABLE_CELL_RE.findall(row)]
+        [
+            " ".join(convert_inline(cell, links, dropped).split())
+            for cell in TABLE_CELL_RE.findall(row)
+        ]
         for row in TABLE_ROW_RE.findall(text)
     ]
     if not rows:
