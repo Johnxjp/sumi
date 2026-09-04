@@ -280,7 +280,8 @@ class SentenceTransformerEmbedder(Embedder):
     """Local embeddings via sentence-transformers, free and offline.
 
     The model is loaded (and downloaded from Hugging Face on first use)
-    lazily by the first call that needs it — encoding or a token primitive.
+    lazily by the first call that needs it — encoding or a token primitive —
+    or up front by load_model().
     Documents embed verbatim, so titles are ignored; instruction-aware
     subclasses set _query_prompt_name to the model's built-in query prompt.
     Embeddings are normalized to match pgvector's cosine scoring, and
@@ -318,10 +319,11 @@ class SentenceTransformerEmbedder(Embedder):
         return vectors.tolist()
 
     def _encode_pieces(self, pieces: list[str], **kwargs) -> np.ndarray:
-        self._load_model()
+        self.load_model()
         return self._model.encode(pieces, normalize_embeddings=True, **kwargs)
 
-    def _load_model(self) -> None:
+    def load_model(self) -> None:
+        """Loads the model now; later calls are no-ops. Otherwise the first encode loads it."""
         if self._model is None:
             # Imported here so that torch only loads when this embedder is used.
             from sentence_transformers import SentenceTransformer
@@ -347,7 +349,7 @@ class SentenceTransformerEmbedder(Embedder):
         ]
 
     def _tokenize(self, text: str) -> list[int]:
-        self._load_model()
+        self.load_model()
         return self._model.tokenizer.encode(text, add_special_tokens=False)
 
 

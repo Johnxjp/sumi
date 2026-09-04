@@ -4,7 +4,11 @@ from unittest import mock
 
 import pytest
 
-from src.retrieval.embedder import BgeM3Embedder, QwenEmbedder
+from src.retrieval.embedder import (
+    BgeM3Embedder,
+    QwenEmbedder,
+    SentenceTransformerEmbedder,
+)
 from src.retrieval.indexer import PgVectorIndexer
 from src.retrieval.lexical import PgFtsIndexer
 from src.retrieval.retrieve import HybridRetriever, build_arm_indexer
@@ -12,6 +16,7 @@ from src.retrieval.search_config import ArmConfig, RetrievalConfig
 
 DB_URL = "postgresql://localhost:5432/nowhere"
 QWEN = ArmConfig(name="qwen", kind="dense", table="chunks_qwen", embedder="qwen")
+BGE = ArmConfig(name="bge-m3", kind="dense", table="chunks_bge_m3", embedder="bge-m3")
 FTS = ArmConfig(name="fts", kind="lexical", table="chunks_fts")
 
 
@@ -133,3 +138,16 @@ def test_build_arm_indexer_builds_the_lexical_arm():
 def test_build_arm_indexer_rejects_invalid_arms(arm, message):
     with pytest.raises(ValueError, match=message):
         build_arm_indexer(arm, DB_URL)
+
+
+@mock.patch.object(SentenceTransformerEmbedder, "load_model", autospec=True)
+def test_load_models_loads_each_dense_arm_and_skips_the_lexical_one(load_model):
+    config = RetrievalConfig(arms=(QWEN, BGE, FTS), fusion="rrf")
+    retriever = HybridRetriever(config, database_url=DB_URL)
+
+    retriever.load_models()
+
+    assert load_model.call_args_list == [
+        mock.call(retriever.arms["qwen"].embedder),
+        mock.call(retriever.arms["bge-m3"].embedder),
+    ]

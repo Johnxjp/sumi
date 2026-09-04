@@ -189,7 +189,7 @@ def inject_fake_model(embedder):
 
 @mock.patch.object(
     SentenceTransformerEmbedder,
-    "_load_model",
+    "load_model",
     autospec=True,
     side_effect=inject_fake_model,
 )

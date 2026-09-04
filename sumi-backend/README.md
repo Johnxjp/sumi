@@ -11,6 +11,13 @@ uv sync
 uv run main.py
 ```
 
+Talk to the same agent in a browser, with replies streamed: start the chat
+backend here, then the page in `../sumi-frontend` (see its README):
+
+```
+uv run uvicorn src.chat.app:app --port 8766
+```
+
 Search the notes directly:
 
 ```

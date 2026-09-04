@@ -10,11 +10,12 @@ the topic rather than into this file or a chat message.
 
 A RAG system over a personal Notion export (~2,300 notes, ~6,000 chunks).
 
-Today: a terminal agent with filesystem, note-search and read-only Gmail
-tools, a hybrid retrieval stack over pgvector (two embedding models plus a
-lexical index, fused), a blind relevance-labelling UI, and an evaluation
-harness that picks the retrieval configuration. The agent's `search_notes`
-tool calls the retrieval stack; the answers it produces are not measured yet.
+Today: an agent with filesystem, note-search and read-only Gmail tools,
+used from a terminal REPL or a web chat page that streams its replies; a
+hybrid retrieval stack over pgvector (two embedding models plus a lexical
+index, fused); a blind relevance-labelling UI; and an evaluation harness
+that picks the retrieval configuration. The agent's `search_notes` tool
+calls the retrieval stack; the answers it produces are not measured yet.
 
 ## Repository outline
 
@@ -24,9 +25,12 @@ sumi/
 ├── .claude/settings.json   hook: ruff on every edited .py file
 ├── docs/                   system of record — index below
 ├── data/                   gitignored: notes export, annotations, eval runs, queue
-└── sumi-backend/           all code. Python 3.12, uv. Run every uv command from here.
+├── sumi-frontend/          web chat page. Next.js + TypeScript, pnpm. Run pnpm commands from here.
+└── sumi-backend/           all Python code. Python 3.12, uv. Run every uv command from here.
     ├── main.py             terminal REPL entry point
-    ├── src/agent.py, src/tools/   OpenRouter tool-calling agent; file, search + Gmail (MCP) tools
+    ├── src/bootstrap.py    system prompt + tool registration, shared by the REPL and the web chat
+    ├── src/agent.py, src/tools/   OpenRouter tool-calling agent (an event stream); file, search + Gmail (MCP) tools
+    ├── src/chat/           FastAPI backend of the web chat: streams agent events as server-sent events
     ├── src/mcp_client.py   generic client for any streamable-HTTP MCP server
     ├── src/retrieval/      clean → chunk → embed → pgvector; hybrid search + RRF fusion
     ├── src/annotation/     FastAPI backend of the labelling UI (page in static/)
@@ -54,6 +58,7 @@ so they only run with `-m` from there.
 
 - Install, test, lint: `uv sync` · `uv run pytest` · `uv run ruff check . --fix && uv run ruff format .`
 - Agent REPL: `uv run main.py` (Gmail tools need `./scripts/run_gmail_mcp.sh` running first)
+- Web chat: `uv run uvicorn src.chat.app:app --port 8766`, then from `sumi-frontend/`: `pnpm dev` (→ http://localhost:3000). Frontend checks: `pnpm test` · `pnpm lint` · `pnpm build`. Detail: `docs/designs/chat-ui.md`
 - Ingest, then build the lexical index: `uv run python -m scripts.ingest --embedder qwen` (and `bge-m3`), then `uv run python -m scripts.build_fts`
 - Search: `uv run python -m scripts.search "your query"`
 - Retrieval evals: `uv run python -m evals.retrieval.selftest` · `run <experiment>` · `compare` · `diagnose <run_id>`

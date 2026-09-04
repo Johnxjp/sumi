@@ -1,8 +1,9 @@
 # sumi
 
-A personal RAG system over a Notion export: an agent REPL with tool calling,
-plus a retrieval pipeline (chunking → embeddings → pgvector) and an annotation
-app for evaluating retrieval quality.
+A personal RAG system over a Notion export: a tool-calling agent, used from a
+terminal REPL or a web chat page (`sumi-frontend/`), plus a retrieval pipeline
+(chunking → embeddings → pgvector) and an annotation app for evaluating
+retrieval quality.
 
 `AGENTS.md` is the map of the repository. Design docs live in `docs/`:
 architecture, retrieval (overview and known weaknesses), the annotation tool,
