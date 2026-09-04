@@ -47,9 +47,24 @@ def get_plain_text(rich_text: Any) -> str:
         return rich_text
     if not isinstance(rich_text, Sequence):
         return ""
-    return "".join(
-        run.get("plain_text") or "" for run in rich_text if isinstance(run, Mapping)
-    )
+    return "".join(get_run_text(run) for run in rich_text if isinstance(run, Mapping))
+
+
+def get_run_text(run: Mapping[str, Any]) -> str:
+    """One run of rich text.
+
+    A run that mentions a date carries the raw ISO string in `plain_text`
+    (`2026-02-23`), but the export wrote the date the way it reads on the page
+    (`@February 23, 2026`). Titles are the place this shows: a note called
+    "End of week check in @February 23, 2026" would otherwise be renamed.
+    """
+    mention = run.get("mention")
+    if isinstance(mention, Mapping) and mention.get("type") == "date":
+        date = mention.get("date")
+        start = date.get("start") if isinstance(date, Mapping) else None
+        if isinstance(start, str) and start:
+            return f"@{format_datetime(start)}"
+    return run.get("plain_text") or ""
 
 
 def format_datetime(value: str) -> str:

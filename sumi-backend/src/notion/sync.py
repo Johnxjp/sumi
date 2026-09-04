@@ -36,7 +36,12 @@ from src.notion.client import (
     NotionNotFoundError,
 )
 from src.notion.markdown import LinkResolver, normalise, render_page
-from src.notion.mirror import build_child_dir, build_mirror_path, regenerate_mirror
+from src.notion.mirror import (
+    build_child_dir,
+    build_mirror_path,
+    regenerate_mirror,
+    sanitise_title,
+)
 from src.notion.properties import (
     flatten_properties,
     format_property_lines,
@@ -947,7 +952,10 @@ def render_synced_page(
     sync stores.
     """
     links = LinkResolver(
-        mirror_paths=mirror_paths, titles=titles, base_dir=place.parent_dir
+        mirror_paths=mirror_paths,
+        titles=titles,
+        base_dir=place.parent_dir,
+        attachment_dir=sanitise_title(obj.title),
     )
     body = normalise(enhanced, links, dropped)
     property_lines = format_property_lines(

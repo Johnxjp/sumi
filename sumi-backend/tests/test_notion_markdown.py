@@ -22,11 +22,15 @@ LINKS = LinkResolver(
         ("- [ ] task\n- [x] done", "- [ ]  task\n- [x]  done"),
         ("- one\n\tnested", "- one\n\n    nested"),
         ("- one\n\t- nested", "- one\n    - nested"),
-        ("para\n<empty-block/>\npara", "para\n\n\n\npara"),
+        ("para\n<empty-block/>\npara", "para\n\npara"),
         ("> quoted", "> quoted\n> "),
         ("> line one\n> line two", "> line one\n> line two\n> "),
         ("## Heading\ntext", "## Heading\n\ntext"),
         ("---\ntext", "---\n\ntext"),
+        ("- item \nnext", "- item\n\nnext"),
+        ("paragraph \nnext", "paragraph \n\nnext"),
+        ("```plain text\ncode\n```", "```\ncode\n```"),
+        ("```python\ncode\n```", "```python\ncode\n```"),
     ],
     ids=[
         "blocks-are-separated-by-a-blank-line",
@@ -37,11 +41,15 @@ LINKS = LinkResolver(
         "to-dos-get-two-spaces-after-the-bracket",
         "a-tab-becomes-four-spaces",
         "nested-list-items-stay-contiguous",
-        "an-empty-block-becomes-an-empty-line",
+        "an-empty-block-is-dropped",
         "a-quote-gains-a-trailing-marker-line",
         "a-multi-line-quote-gains-one-marker-line",
         "headings-pass-through",
         "dividers-pass-through",
+        "a-list-item-loses-its-trailing-space",
+        "a-paragraph-keeps-its-trailing-space",
+        "a-plain-text-fence-loses-its-language",
+        "a-real-fence-language-is-kept",
     ],
 )
 def test_block_spacing_and_line_rules(enhanced, expected):
@@ -67,7 +75,7 @@ def test_block_spacing_and_line_rules(enhanced, expected):
         ),
         (
             "![](https://prod-files-secure.s3.amazonaws.com/x/Kobe%20run.jpg?X-Amz-Expires=300)",
-            "![Kobe run.jpg](Kobe run.jpg)",
+            "![Kobe run.jpg](Kobe%20run.jpg)",
         ),
         (
             "![alt](https://static01.nyt.com/images/a.png)",
@@ -261,3 +269,15 @@ def test_render_page_does_not_repeat_a_title_the_body_already_has():
         "properties": {"Name": {"type": "title", "title": [{"plain_text": "Notes"}]}}
     }
     assert render_page(page, "# Notes\n\nbody text") == "# Notes\n\nbody text\n"
+
+
+def test_an_uploaded_file_is_linked_inside_the_notes_attachment_folder():
+    """The export put a note's uploads in a folder named after the note."""
+    links = LinkResolver(attachment_dir="A moodboard for myself")
+    enhanced = (
+        "![](https://prod-files-secure.s3.amazonaws.com/x/image.png?X-Amz-Expires=300)"
+    )
+    assert (
+        normalise(enhanced, links)
+        == "![image.png](A%20moodboard%20for%20myself/image.png)"
+    )
