@@ -27,6 +27,7 @@ from evals.retrieval.qrels import (
 from evals.retrieval.queue import UnjudgedCandidate, append_unjudged
 from evals.retrieval.split import Split, load_split
 from src.annotation.store import normalize_query
+from src.notion.mirror import extract_page_id
 from src.retrieval.retrieve import HybridRetriever
 from src.retrieval.search_config import RetrievalConfig
 
@@ -130,7 +131,16 @@ def find_positive_ranks(
 def score_generated(
     file_query: FileQuery, rows: list[dict[str, Any]]
 ) -> dict[str, float]:
-    hits = [1 if row.get("source") == file_query.source else 0 for row in rows]
+    """A hit is any chunk of the note the query was generated from.
+
+    The note is named by its Notion page id, which is in a chunk's source
+    whichever corpus answered: the frozen export corpus stores a file path
+    ending in the id, the synced corpus stores the id itself.
+    """
+    hits = [
+        1 if extract_page_id(str(row.get("source") or "")) == file_query.source else 0
+        for row in rows
+    ]
     return {
         "file_recall@10": 1.0 if any(hits[:K]) else 0.0,
         "file_mrr@10": compute_mrr(hits, K),
