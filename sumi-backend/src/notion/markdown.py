@@ -24,6 +24,18 @@ from urllib.parse import quote, unquote, urlparse
 from src.notion.properties import MONTHS, get_page_title
 
 TAB_WIDTH = 4
+# The export closed every quote with this line, trailing space included.
+QUOTE_TERMINATOR = "> "
+# Notion leaves a space inside the emphasis markers (`**bold **next`); the
+# export put it outside (`**bold** next`). Same characters, different text, so
+# a judgment hashed from the export form would not match.
+EMPHASIS_SPACE_RE = re.compile(r"(?<![\w*_])(\*{1,2}|_{1,2})(\s*)(\S|\S.*?\S)(\s*)\1")
+LINE_BREAK_RE = re.compile(r"<br\s*/?>")
+# A break that ends the text, bar a closing emphasis marker, added nothing.
+TRAILING_LINE_BREAK_RE = re.compile(r"<br\s*/?>(?=\s*(?:\*{1,2}|_{1,2})?\s*$)")
+# Notion labels a code block with no language "plain text"; the export wrote a
+# bare fence. Real languages (```python) are written the same way by both.
+DEFAULT_FENCE_RE = re.compile(r"^(\s*```)plain text\s*$")
 # Tags that wrap other blocks; each is closed by </tag> on a later line.
 CONTAINER_TAGS = (
     "callout",
@@ -89,6 +101,14 @@ class LinkResolver:
     mirror_paths: Mapping[str, str] = field(default_factory=dict)
     titles: Mapping[str, str] = field(default_factory=dict)
     base_dir: str = ""
+    # The export put a note's uploaded files in a folder beside it, named after
+    # the note, and linked them as "A moodboard for myself/image.png".
+    attachment_dir: str = ""
+
+    def build_file_link(self, name: str) -> str:
+        if not self.attachment_dir:
+            return quote(name)
+        return quote(f"{self.attachment_dir}/{name}")
 
     def build_link(self, page_id: str, fallback_title: str = "") -> str:
         title = self.titles.get(page_id) or fallback_title or "Untitled"
@@ -124,7 +144,19 @@ def normalise(
     resolver = links if links is not None else LinkResolver()
     counter: Counter[str] = Counter() if dropped is None else dropped
     lines = enhanced.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    return join_blocks(convert_lines(lines, resolver, counter))
+    return join_blocks(convert_lines(expand_line_breaks(lines), resolver, counter))
+
+
+def expand_line_breaks(lines: Sequence[str]) -> list[str]:
+    """Notion writes a soft line break as `<br>`; the export had no such tag.
+
+    Where the break ends the text it is dropped, and where it sits between two
+    pieces of text the export started a new block, so the line splits in two.
+    """
+    out: list[str] = []
+    for line in lines:
+        out.extend(LINE_BREAK_RE.split(TRAILING_LINE_BREAK_RE.sub("", line)))
+    return out
 
 
 def join_blocks(blocks: Sequence[Block]) -> str:
@@ -150,7 +182,10 @@ def convert_lines(
             index += 1
             continue
         if stripped == "<empty-block/>":
-            blocks.append(Block(("",)))
+            # The export dropped empty paragraphs entirely. Keeping one as a
+            # blank line would add a second blank line between its neighbours,
+            # and the chunker splits on blank lines, so every chunk boundary
+            # after it would move and the judgments would stop matching.
             index += 1
             continue
         verbatim = FENCE_RE if FENCE_RE.match(raw) else None
@@ -158,7 +193,10 @@ def convert_lines(
             verbatim = EQUATION_FENCE_RE
         if verbatim is not None:
             end = find_region_end(lines, index, verbatim)
-            blocks.append(Block(tuple(expand_tabs(line) for line in lines[index:end])))
+            region = [expand_tabs(line) for line in lines[index:end]]
+            if verbatim is FENCE_RE and region:
+                region[0] = DEFAULT_FENCE_RE.sub(r"\1", region[0])
+            blocks.append(Block(tuple(region)))
             index = end
             continue
         tag = get_open_tag(stripped)
@@ -177,16 +215,26 @@ def convert_lines(
             end = index
             while end < len(lines) and is_quote(lines[end].strip()):
                 end += 1
+            # An empty line inside a quote is a bare ">" in Notion and "> " in
+            # the export, the same form the export closed every quote with.
             quoted = [
-                convert_inline(expand_tabs(line), links, dropped)
-                for line in lines[index:end]
+                converted if converted != ">" else QUOTE_TERMINATOR
+                for converted in (
+                    convert_inline(expand_tabs(line), links, dropped)
+                    for line in lines[index:end]
+                )
             ]
-            blocks.append(Block((*quoted, "> ")))
+            blocks.append(Block((*quoted, QUOTE_TERMINATOR)))
             index = end
             continue
         text = convert_inline(expand_tabs(raw), links, dropped)
         if text.strip():
-            blocks.append(Block((text,), is_list_item=bool(LIST_ITEM_RE.match(text))))
+            is_list_item = bool(LIST_ITEM_RE.match(text))
+            # The export left a list item's trailing space off, but kept one on
+            # a paragraph. Both forms are in the judged text, so both are kept.
+            blocks.append(
+                Block((text.rstrip() if is_list_item else text,), is_list_item)
+            )
         index += 1
     return blocks
 
@@ -290,10 +338,18 @@ def convert_inline(line: str, links: LinkResolver, dropped: Counter[str]) -> str
     text = drop_self_closing_tags(text, dropped)
     text = SPAN_RE.sub("", text)
     text = ATTRIBUTE_LIST_RE.sub("", text)
-    text = IMAGE_RE.sub(replace_image, text)
+    text = IMAGE_RE.sub(lambda match: replace_image(match, links), text)
     text = INLINE_EQUATION_RE.sub(r"$\1$", text)
     text = TODO_RE.sub(r"\1- [\2]  ", text)
+    text = move_emphasis_spaces(text)
     return ESCAPE_RE.sub(r"\1", text)
+
+
+def move_emphasis_spaces(text: str) -> str:
+    """`**bold **next` becomes `**bold** next`, the way the export wrote it."""
+    return EMPHASIS_SPACE_RE.sub(
+        lambda m: f"{m.group(2)}{m.group(1)}{m.group(3)}{m.group(1)}{m.group(4)}", text
+    )
 
 
 def replace_page_mentions(text: str, links: LinkResolver) -> str:
@@ -340,12 +396,12 @@ def replace_attachment(match: re.Match[str]) -> str:
     return f"[{caption}]({name})" if name else caption
 
 
-def replace_image(match: re.Match[str]) -> str:
+def replace_image(match: re.Match[str], links: LinkResolver) -> str:
     url = match.group(2)
     if NOTION_FILE_HOST not in url:
         return match.group(0)
     name = get_file_name(url)
-    return f"![{name}]({name})" if name else ""
+    return f"![{name}]({links.build_file_link(name)})" if name else ""
 
 
 def drop_self_closing_tags(text: str, dropped: Counter[str]) -> str:
@@ -423,7 +479,9 @@ def render_page(page: Mapping[str, object], body: str, property_lines: str = "")
     heading; when it does, the frame keeps that one rather than adding a
     second.
     """
-    title = get_page_title(page)
+    # A Notion title often ends in a space, and an untitled page has none at
+    # all; the export wrote neither, and headed an untitled page "# Untitled".
+    title = get_page_title(page).strip() or "Untitled"
     heading = f"# {title}"
     body_lines = body.split("\n")
     if body_lines and body_lines[0].strip() == heading:

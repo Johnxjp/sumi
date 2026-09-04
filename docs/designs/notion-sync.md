@@ -1,72 +1,60 @@
-# Plan: write the Notion sync design document
-
-## Context
-
-Sumi's retrieval tables are filled from a folder of markdown files that the
-owner exported from Notion by hand on 2026-08-09. The export is stale, manual
-and lossy (`docs/plans/active/notion-sync.md`). On 2026-09-03 an investigation
-(`docs/research/notion-mcp-investigation.md`) measured Notion's own search
-against the local stack and concluded: keep retrieval, feed it from Notion.
-The plan note collected facts but says "design not yet drafted".
-
-This plan produces that design as `docs/designs/notion-sync.md`. The
-document below is the full draft. On approval it is written to that path,
-the active plan note is cut down to a pointer plus phases and done-when, and
-the stale link in the investigation doc is fixed. No code changes in this
-step; implementation is planned separately, phase by phase.
-
-Decisions the owner made in this session (2026-09-04):
-
-- Chunk ids become `{page_id}#{chunk_index}`.
-- The sync writes a markdown mirror to disk; filesystem tools read it.
-- Sync runs on demand (CLI now, a button in the web chat later); no
-  scheduler yet.
-- The document covers the sync only; agent-side Notion MCP tools are a
-  follow-up.
-- Build from scratch rather than update in place: the first sync fills
-  fresh `_notion` tables (the export-built tables stay until the switch),
-  and the mirror folder is regenerated from the database at the end of
-  every run instead of being edited file by file.
-
-Discovered during the session, and the reason the design differs from the
-plan note: Notion's REST API has returned whole pages as markdown since
-2026-02-26 (`GET /v1/pages/{id}/markdown`). The block-tree converter the
-note called "the one genuinely new piece of code" is not needed; a small
-normaliser is.
-
-The working tree also holds uncommitted web-chat work (`src/bootstrap.py`,
-`src/chat/`, `sumi-frontend/`, `docs/designs/chat-ui.md`). The design
-refers to those files as they are on disk now, since the "UI" the owner
-wants a sync button in is that web chat.
-
-## Files to write or edit
-
-1. `docs/designs/notion-sync.md` — new, the document below.
-2. `docs/plans/active/notion-sync.md` — replace body with: status, link to
-   the design, the four implementation phases, the done-when list.
-3. `docs/research/notion-mcp-investigation.md` — fix the link
-   `docs/todos/notion-sync.md` → `docs/plans/active/notion-sync.md`; add a
-   pointer to the design; add one sentence under "Integration facts" that
-   the REST API now returns markdown (the doc says the block API is the
-   only REST path).
-4. `AGENTS.md` docs index — no change; the "docs/design" line covers it.
-
-## Verification
-
-- Read each edited doc cold; every file path, table name and config value
-  named in the design must either exist today or be marked as new.
-- `grep -rn "docs/todos/notion-sync" docs/` prints nothing.
-
----
-
-# The design document (to become `docs/designs/notion-sync.md`)
-
 # Syncing the notes corpus from Notion
 
 Design for replacing the hand-made Notion export with a job that pulls pages
 from the Notion API into the existing retrieval tables and a markdown folder
 on disk. Written 2026-09-04. Paths are relative to `sumi-backend/` unless
 noted. Terms are defined the first time they appear.
+
+## 0. What changed after this was written
+
+This document was written on 2026-09-04, before any of it ran. Two things are
+now known that contradict parts of it. They are recorded here rather than
+rewritten throughout, so the reasoning below still reads as it was made.
+
+**The eval corpus is frozen, and the labels are not migrated (decided
+2026-09-05).** A "label" is a human judgment that a chunk of a note answers a
+query; there are 171 of them, and each is joined to a chunk by a hash of that
+chunk's text. This design proposed re-attaching them to the synced corpus
+(§7), which needs the sync to reproduce the export's text almost exactly
+(§9's 95% gate).
+
+That was the wrong shape. Labels describe a *snapshot* of the notes, and the
+synced corpus changes every time a note is edited, so the labels would decay
+continuously. Instead:
+
+- The hand-made export (`data/notion-export-markdown`) and the tables built
+  from it (`chunks_qwen`, `chunks_bge_m3`, `chunks_fts`) are kept as the
+  **frozen eval corpus**. Every label matches it exactly, so the recorded
+  `rrf-3arm-k5` baseline stays comparable to future runs. §13's phase 4 said
+  to delete these; it must not.
+- The synced `_notion` tables and `data/notion-mirror` are the **live corpus**,
+  serving the agent. It starts empty and fills from Notion.
+- No judgment is migrated. `scripts/migrate_eval_ids.py` is deleted: running it
+  would rewrite label ids to page ids and break the join to the frozen corpus.
+- §9's fidelity check is no longer a gate on anything. It stays as a
+  diagnostic, because a large gap between the two corpora is still worth
+  seeing.
+- Only one corpus of each kind is stored. Runs are labelled with a
+  `corpus_version` date rather than pointing at a saved snapshot.
+
+The cost is that a retrieval configuration is chosen on an ageing corpus. That
+is accepted: re-snapshotting and re-labelling becomes a decision to take on
+purpose, not an accident that happens whenever a note is edited.
+
+**Property-line order cannot be recovered from Notion's API (measured
+2026-09-05).** A database row's properties were written under the title by the
+export as `Name: value` lines, and their order is the column order from the
+Notion interface. Neither the order the API returns a page's properties in
+(415 of 823 pages), nor the reverse of it (361), nor alphabetical order
+reproduces it. §6.4's claim that "order must come from the data source schema"
+is wrong. With the eval corpus frozen this no longer matters, because nothing
+joins the two corpora by text.
+
+**Also added, not in this design:** a usage log. Every `search_notes` call
+appends the user's own question, the query the agent rewrote it into, the
+corpus version and the ranked chunk ids to `data/usage/searches.jsonl`. It is
+not scored; it exists so that real questions can become an eval set later.
+See `docs/architecture.md`.
 
 ## 1. Summary
 

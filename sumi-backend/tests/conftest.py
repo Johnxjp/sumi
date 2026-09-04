@@ -1,7 +1,9 @@
-"""Shared fixtures for tests that need a local Postgres."""
+"""Shared fixtures: a local Postgres, and a usage log that never leaves tmp."""
 
 import psycopg
 import pytest
+
+import src.usage
 
 
 def is_postgres_available() -> bool:
@@ -31,3 +33,15 @@ def test_db_url() -> str:
         if row is None:
             conn.execute("CREATE DATABASE sumi_test")
     return "postgresql://localhost:5432/sumi_test"
+
+
+@pytest.fixture(autouse=True)
+def usage_log_in_tmp(tmp_path, monkeypatch):
+    """Keep the search usage log out of the real data directory.
+
+    `search_notes` logs every call, so without this any test that searches
+    would append to the owner's own log and open a database connection to
+    read the corpus version.
+    """
+    monkeypatch.setattr(src.usage, "USAGE_PATH", tmp_path / "searches.jsonl")
+    monkeypatch.setattr(src.usage, "get_corpus_version", lambda *a, **k: "2026-09-01")

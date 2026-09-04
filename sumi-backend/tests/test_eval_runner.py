@@ -76,13 +76,28 @@ def test_build_result_rows_tags_each_row_with_its_judgment(qrel):
     assert (unscored["gain"], unscored["judged"]) == (None, False)
 
 
-def test_score_generated_matches_on_the_source_file():
-    file_query = FileQuery(query="q", source="b#0.md")
-    assert score_generated(file_query, make_rows("a#0", "b#0")) == {
+PAGE_A = "336d52d026fc8076ade8f7b2612f1fef"
+PAGE_B = "146d52d026fc8065a351fc6e2ea53f8b"
+
+
+@pytest.mark.parametrize(
+    "sources",
+    [
+        [f"Journal/Miss {PAGE_A}.md", f"Journal/Hit {PAGE_B}.md"],
+        [PAGE_A, PAGE_B],
+    ],
+    ids=["frozen-export-corpus-stores-a-path", "synced-corpus-stores-a-page-id"],
+)
+def test_score_generated_matches_the_note_by_page_id(sources):
+    """The generated query's note is found whichever corpus answered."""
+    file_query = FileQuery(query="q", source=PAGE_B)
+    rows = [{"id": f"{s}#0", "source": s, "text": "t", "metadata": {}} for s in sources]
+
+    assert score_generated(file_query, rows) == {
         "file_recall@10": 1.0,
         "file_mrr@10": 0.5,
     }
-    assert score_generated(file_query, make_rows("a#0")) == {
+    assert score_generated(file_query, rows[:1]) == {
         "file_recall@10": 0.0,
         "file_mrr@10": 0.0,
     }

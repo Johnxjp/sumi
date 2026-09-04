@@ -89,11 +89,27 @@ notes folder on disk from the database at the end of every run (`mirror.py`).
 rather than by file path, so a rename or a move no longer orphans them, and
 each one carries the note's title, its file in the mirror, created and last
 edited times, database properties and page URL.
-`scripts/check_export_fidelity.py` measures the normaliser against the export,
-which is the gate everything else waits on; `scripts/migrate_eval_ids.py`
-carries the human judgments over to the new ids. Detail:
+`scripts/check_export_fidelity.py` measures how far the normaliser's output
+has drifted from the export; it is a diagnostic, not a gate. Detail:
 `docs/designs/notion-sync.md`; what is left to do:
 `docs/plans/active/notion-sync.md`.
+
+**There are two corpora, on purpose.** The hand-made export and the tables
+built from it are frozen: they are what the 171 human judgments were made on,
+so eval runs stay comparable with each other for as long as they use it. The
+synced tables and `data/notion-mirror` are live and change whenever a note
+does. Judgments are never carried between the two — a judgment is joined to a
+chunk by a hash of the chunk's text, and text that changes loses its label.
+Eval experiments name the frozen tables; the agent reads the live ones.
+
+**Usage log** — `src/usage.py`. Every `search_notes` call appends one line of
+JSON to `data/usage/searches.jsonl`: the question the user typed, the query the
+agent rewrote it into (the two differ, because the agent is told to search with
+the words a note would contain), the corpus version, the retrieval
+configuration's name, and the ranked chunk ids that came back. Nothing scores
+it. It is kept so that real questions can be labelled into an eval set later,
+instead of inventing queries by hand. The user's wording reaches the tool
+through a context variable the agent sets for the length of a turn.
 
 **4. Annotation tool** — `src/annotation/` + `static/`. A FastAPI backend and
 one vanilla-JS page for grading how relevant a chunk is to a query (0/1/2),

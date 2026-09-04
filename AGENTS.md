@@ -20,9 +20,10 @@ sumi/
     ├── src/notion/         the sync: Notion REST client, markdown normaliser, mirror folder, the job itself
     ├── src/retrieval/      clean → chunk → embed → pgvector; hybrid search + RRF fusion
     ├── src/annotation/     FastAPI backend of the labelling UI (page in static/)
+    ├── src/usage.py        logs every search: user question, agent's query, results
     ├── src/config.py       app settings from .env · src/paths.py: REPO_ROOT, DATA_DIR
     ├── evals/              query generation; evals/retrieval/ is the eval harness
-    ├── scripts/            sync, ingest, build_fts, search, export-fidelity, eval-id migration, MCP smoke scripts
+    ├── scripts/            sync, ingest, build_fts, search, export-fidelity, MCP smoke scripts
     └── tests/              pytest; `postgres` marker for tests needing a local DB
 ```
 
@@ -96,6 +97,11 @@ Documents and when to read them.
   tables key on the file path, the `_notion` tables on the Notion page id.
   Only `scripts/sync.py` writes the `_notion` tables; never point
   `scripts/ingest.py` at them.
+- The export corpus is frozen: `data/notion-export-markdown` and the
+  `chunks_qwen`, `chunks_bge_m3` and `chunks_fts` tables are what the 171 human
+  judgments were made on. Never re-ingest, edit or delete them — every recorded
+  eval number stops being comparable. Eval experiments read these; the agent
+  reads the `_notion` tables. Judgments are never carried between the two.
 - The `chunks` table (Gemini, older chunking) is stale. Never read from it.
 - Never regenerate the train/val split (`make_split --force`): every recorded
   eval run becomes incomparable. Eval numbers are floors — an unlabelled result
