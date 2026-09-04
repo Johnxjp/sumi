@@ -22,7 +22,15 @@ which joins the final turn's text; by default it prints only the answer, and
 `uv run main.py --verbose` also prints the model's reasoning and each tool
 call; the web chat server always prints them. The web chat (`src/chat/` + `sumi-frontend/`; detail:
 `docs/designs/chat-ui.md`) forwards the events to the browser as server-sent
-events. The agent's filesystem tools
+events. Every run is traced to Pydantic Logfire, an observability service built
+on OpenTelemetry: one `invoke_agent` span for the run, a `chat` span for each
+model call carrying the conversation, stop reason and token counts, and an
+`execute_tool` span for each tool call with its arguments and result
+(`src/observability.py`; detail: `docs/designs/agent-observability.md`). In the
+web chat the HTTP request is the root span, and one worker thread runs the whole
+reply — Starlette otherwise copies the context afresh for each streamed event,
+which would leave every span the agent holds open across a yield starting a
+trace of its own. The agent's filesystem tools
 (`src/tools/file.py`, registered through `src/tools/registry.py`) read the
 notes directory: read a file, list a directory, ripgrep search — all sandboxed
 to `data_dir`. Its `search_notes` tool (`src/tools/search.py`, registered
@@ -114,7 +122,8 @@ time while leaving the stored text — and therefore the ids — untouched.
 Three objects, kept separate on purpose:
 
 - `src/config.py` → `app_config` (pydantic-settings, reads `.env`): data dir,
-  OpenRouter and Gemini keys, `DATABASE_URL`, BreadBowl credentials. It sets
+  OpenRouter and Gemini keys, `DATABASE_URL`, BreadBowl credentials, and
+  `LOGFIRE_API_KEY` (optional — empty means no traces are sent). It sets
   `extra="forbid"`, so **every variable in `.env` must have a field** — an
   unknown variable breaks every import of `app_config`.
 - `evals/config.py` (pydantic-settings, reads `.env`): model, temperature and

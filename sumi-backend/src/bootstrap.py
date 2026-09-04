@@ -3,8 +3,11 @@
 import src.tools.file  # noqa: F401  # registers the filesystem tools on import
 from src.agent import Agent
 from src.config import app_config
+from src.observability import configure_logfire
 from src.tools.gmail import register_gmail_tools
 from src.tools.search import register_search_tools
+
+configure_logfire()
 
 SYSTEM_PROMPT = (
     "You are a helpful assistant that answers questions from the user's personal "

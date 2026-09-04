@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import logfire
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -21,6 +22,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="sumi chat", lifespan=lifespan)
+# Makes the request the root span, so the agent's spans nest underneath it.
+logfire.instrument_fastapi(app)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],

@@ -43,8 +43,12 @@ The payloads are `{"type": "text", "text": …}` and
 `{"type": "tool_call", "name": …, "arguments": {…}}` (the arguments parsed,
 `{}` if they were not a JSON object), then `{"type": "done"}`, or
 `{"type": "error", "message": …}` if anything failed. `POST /api/reset` clears
-the history. The endpoint is synchronous; Starlette runs it in a thread, so
-the event loop is not blocked while the agent works. At startup the server
+the history. The endpoint is synchronous, but it returns an async generator
+that runs the whole reply on one worker thread, so the event loop is not blocked
+while the agent works. The single thread also keeps the agent's trace spans
+nested: Starlette drives a plain sync generator with one thread call per item,
+each in a fresh copy of the context, which breaks any span held open across a
+yield (`docs/designs/agent-observability.md`). At startup the server
 loads both embedding models (`HybridRetriever.load_models()`), so the first
 question is not slower than the rest.
 
