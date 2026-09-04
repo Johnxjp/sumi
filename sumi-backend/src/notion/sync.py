@@ -932,6 +932,30 @@ async def execute_run(
     report.finished_at = datetime.now(UTC)
 
 
+def render_synced_page(
+    enhanced: str,
+    obj: NotionObject,
+    place: Place,
+    schema_orders: Mapping[str, list[str]],
+    titles: Mapping[str, str],
+    mirror_paths: Mapping[str, str],
+    dropped: Counter[str] | None = None,
+) -> str:
+    """Notion's markdown for one page, rendered in the export's shape.
+
+    The fidelity check calls this too, so what it measures is exactly what the
+    sync stores.
+    """
+    links = LinkResolver(
+        mirror_paths=mirror_paths, titles=titles, base_dir=place.parent_dir
+    )
+    body = normalise(enhanced, links, dropped)
+    property_lines = format_property_lines(
+        obj.properties, schema_orders.get(obj.parent_id or "", []), titles
+    )
+    return render_page({"properties": obj.properties}, body, property_lines)
+
+
 async def sync_one_page(
     client: NotionClient,
     store: SyncStore,
@@ -945,16 +969,16 @@ async def sync_one_page(
     listed_at: datetime,
 ) -> None:
     """Fetch one page, normalise it, replace its chunks, record its row."""
-    enhanced = client.get_page_markdown(obj.id)
     counted: Counter[str] = Counter()
-    links = LinkResolver(
-        mirror_paths=mirror_paths, titles=titles, base_dir=place.parent_dir
+    markdown = render_synced_page(
+        client.get_page_markdown(obj.id),
+        obj,
+        place,
+        schema_orders,
+        titles,
+        mirror_paths,
+        counted,
     )
-    body = normalise(enhanced, links, counted)
-    schema_order = schema_orders.get(obj.parent_id or "", [])
-    property_lines = format_property_lines(obj.properties, schema_order, titles)
-    markdown = render_page({"properties": obj.properties}, body, property_lines)
-
     metadata = build_chunk_metadata(obj, place, titles)
     documents = build_documents(obj.id, markdown, metadata)
     chunk_count = await index_page(indexers, obj.id, documents)

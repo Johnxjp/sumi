@@ -18,9 +18,22 @@ from pathlib import Path
 
 # The characters the export stripped from a title before using it as a name.
 UNSAFE_CHARACTERS = re.compile(r'[/\\:*?"<>|]')
+# The 32-hex Notion page id that ends every file name, in the mirror and in the
+# hand-made export alike. It is what maps an old export path to a page.
+PAGE_ID_IN_NAME = re.compile(r"([0-9a-fA-F]{32})(?:\.[^.\\/]*)?$")
 FALLBACK_TITLE = "Untitled"
 STAGING_SUFFIX = ".tmp"
 PREVIOUS_SUFFIX = ".old"
+
+
+def extract_page_id(name: str) -> str:
+    """The Notion page id at the end of a file name, or "" when there is none.
+
+    One exported file has no id (`career-direction.md`), because it is an
+    uploaded file rather than a page.
+    """
+    match = PAGE_ID_IN_NAME.search(name)
+    return match.group(1).lower() if match else ""
 
 
 def sanitise_title(title: str) -> str:

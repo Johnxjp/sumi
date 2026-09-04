@@ -3,6 +3,7 @@ import pytest
 from src.notion.mirror import (
     build_child_dir,
     build_mirror_path,
+    extract_page_id,
     regenerate_mirror,
     sanitise_title,
 )
@@ -48,6 +49,29 @@ def test_sanitise_title(title, expected):
 )
 def test_build_mirror_path(parent_dir, expected):
     assert build_mirror_path("Job Hunt", PAGE_ID, parent_dir) == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        (f"Journal/Take responsibility {PAGE_ID}.md", PAGE_ID),
+        (f"Take responsibility {PAGE_ID}", PAGE_ID),
+        (f"../data/notion-export-markdown/Journal/a {PAGE_ID}.md", PAGE_ID),
+        (f"Note {PAGE_ID.upper()}.md", PAGE_ID),
+        ("Journal/Untitled 3b5d-4a24/career-direction.md", ""),
+        ("", ""),
+    ],
+    ids=[
+        "an-export-path",
+        "no-extension",
+        "a-full-path-with-a-prefix",
+        "uppercase-is-normalised",
+        "an-uploaded-file-has-no-id",
+        "empty",
+    ],
+)
+def test_extract_page_id(name, expected):
+    assert extract_page_id(name) == expected
 
 
 def test_build_child_dir_uses_the_plain_title_when_it_is_unique():
