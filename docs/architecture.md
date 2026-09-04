@@ -11,14 +11,22 @@ Five loosely coupled pieces share one Postgres database and one notes
 directory (`data/notion-export-markdown` at the repo root, configurable as
 `data_dir`).
 
-**1. Agent CLI** — `main.py` → `src/agent.py` + `src/tools/`. A terminal REPL
-running an OpenRouter tool-calling agent. By default the loop shows only the
-final answer; `uv run main.py --verbose` also prints the intermediate steps
-(model reasoning and each tool call). Its filesystem tools
+**1. Agent** — `src/agent.py` + `src/tools/`, reached through two front ends.
+`Agent.stream()` runs the OpenRouter tool-calling loop with streaming on and
+yields events as it goes: a `TextDelta` for each piece of assistant text and a
+`ToolCall` just before a tool runs. If the model or a tool fails, the whole
+exchange is dropped from the history so the next query starts clean.
+`src/bootstrap.py` holds the system prompt and registers every tool, so both
+front ends behave the same. The terminal REPL (`main.py`) calls `Agent.run()`,
+which joins the final turn's text; by default it prints only the answer, and
+`uv run main.py --verbose` also prints the model's reasoning and each tool
+call; the web chat server always prints them. The web chat (`src/chat/` + `sumi-frontend/`; detail:
+`docs/designs/chat-ui.md`) forwards the events to the browser as server-sent
+events. The agent's filesystem tools
 (`src/tools/file.py`, registered through `src/tools/registry.py`) read the
 notes directory: read a file, list a directory, ripgrep search — all sandboxed
 to `data_dir`. Its `search_notes` tool (`src/tools/search.py`, registered
-explicitly by `main.py`) calls `src/retrieval/retrieve.py:retrieve()` at the
+by `src/bootstrap.py`) calls `src/retrieval/retrieve.py:retrieve()` at the
 shipped configuration's `top_k` (10, from `src/retrieval/search_config.py`;
 the model cannot change it) and returns each chunk as `{rank, chunk_id, source, title, text}`,
 which `src/tools/core.py` serialises to JSON for the model. The tool
@@ -94,7 +102,8 @@ Each chunk carries one piece of metadata: the note title. Nothing else
 `src/retrieval/embedder.py`: `GeminiEmbedder` (API, 768-dim, free-tier
 rate-limit handling) and two local sentence-transformers models,
 `QwenEmbedder` and `BgeM3Embedder`, sharing a `SentenceTransformerEmbedder`
-base with lazy model loading. Every embedder takes `max_seq_length` (tokens)
+base that loads its model on first use, or up front through
+`HybridRetriever.load_models()` (the web chat server does this at startup). Every embedder takes `max_seq_length` (tokens)
 and an `overflow_strategy` (`chunking-average` default, `truncate`,
 `barbell`); over-length inputs are handled once in the `Embedder` base class.
 `TitlePrefixEmbedder` wraps any of them to prepend the note title at embed

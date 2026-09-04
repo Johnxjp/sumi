@@ -1,0 +1,246 @@
+:root {
+  --paper: #fbfaf7;
+  --ink: #1b1a17;
+  --ink-diluted: #5e5b55;
+  --ink-faint: #a8a59d;
+  --ink-hairline: #e6e4de;
+  --seal: #b8322b;
+  --serif: var(--font-serif), "Iowan Old Style", Georgia, serif;
+  --sans: var(--font-sans), system-ui, sans-serif;
+  --column: 40rem;
+  --gutter: 1.25rem;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--paper);
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--serif);
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--paper);
+}
+
+.topbar-inner {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  max-width: var(--column);
+  margin: 0 auto;
+  padding: 1.25rem var(--gutter) 0.75rem;
+}
+
+.wordmark {
+  font-size: 1.375rem;
+  font-style: italic;
+  letter-spacing: 0.01em;
+}
+
+.newchat {
+  font: 500 0.8125rem/1 var(--sans);
+  color: var(--ink-diluted);
+  background: none;
+  border: 0;
+  padding: 0.375rem 0;
+  cursor: pointer;
+}
+
+.newchat:hover {
+  color: var(--ink);
+}
+
+.newchat:disabled {
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+.transcript-area {
+  flex: 1;
+  width: 100%;
+  max-width: var(--column);
+  margin: 0 auto;
+  padding: 1.5rem var(--gutter) 2rem;
+}
+
+.empty {
+  margin: 28vh 0 0;
+  color: var(--ink-faint);
+  font-size: 1.125rem;
+  text-align: center;
+}
+
+.transcript {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.question {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.question:not(:first-child) {
+  margin-top: 2.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--ink-hairline);
+}
+
+.reply .text {
+  margin: 0 0 1em;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tool {
+  position: relative;
+  margin: 0 0 0.5rem;
+  padding-left: 1rem;
+  font: 400 0.8125rem/1.5 var(--sans);
+  color: var(--ink-diluted);
+  overflow-wrap: anywhere;
+}
+
+.tool::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.55rem;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+}
+
+.tool + .text {
+  margin-top: 1rem;
+}
+
+.error {
+  margin: 0.5rem 0 0;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--seal);
+  font: 400 0.875rem/1.5 var(--sans);
+  color: var(--ink-diluted);
+}
+
+.thinking {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin: 0.5rem 0 0 0.125rem;
+  border-radius: 50%;
+  background: var(--ink);
+  animation: breathe 1.4s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+.dock {
+  position: sticky;
+  bottom: 0;
+  padding: 1.25rem var(--gutter);
+  background: linear-gradient(to bottom, transparent, var(--paper) 1.25rem);
+}
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  max-width: var(--column);
+  margin: 0 auto;
+  padding: 0.625rem 0.625rem 0.625rem 0.875rem;
+  background: var(--paper);
+  border: 1px solid var(--ink-hairline);
+  border-radius: 10px;
+  transition: border-color 120ms;
+}
+
+.composer:focus-within {
+  border-color: var(--ink-faint);
+}
+
+.composer textarea {
+  flex: 1;
+  max-height: 12rem;
+  margin: 0;
+  padding: 0.25rem 0;
+  border: 0;
+  background: none;
+  font: 400 1.0625rem/1.5 var(--serif);
+  color: var(--ink);
+  resize: none;
+  outline: none;
+}
+
+.composer textarea::placeholder {
+  color: var(--ink-faint);
+}
+
+.seal {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 0;
+  border-radius: 6px;
+  background: var(--seal);
+  color: var(--paper);
+  cursor: pointer;
+  transition: background-color 120ms;
+}
+
+.seal:disabled {
+  background: var(--ink-hairline);
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+.seal:focus-visible,
+.newchat:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}

@@ -5,7 +5,12 @@ from functools import lru_cache
 from typing import Any
 
 from src.config import app_config
-from src.retrieval.embedder import BgeM3Embedder, Embedder, QwenEmbedder
+from src.retrieval.embedder import (
+    BgeM3Embedder,
+    Embedder,
+    QwenEmbedder,
+    SentenceTransformerEmbedder,
+)
 from src.retrieval.fusion import fuse_rrf
 from src.retrieval.indexer import Indexer, PgVectorIndexer
 from src.retrieval.lexical import PgFtsIndexer
@@ -58,6 +63,13 @@ class HybridRetriever:
         url = database_url or app_config.database_url
         # Arms are built once: a dense arm loads a sentence-transformers model.
         self.arms = {arm.name: build_arm_indexer(arm, url) for arm in config.arms}
+
+    def load_models(self) -> None:
+        """Loads every dense arm's embedding model now, so the first query does not pay for it."""
+        for indexer in self.arms.values():
+            embedder = getattr(indexer, "embedder", None)
+            if isinstance(embedder, SentenceTransformerEmbedder):
+                embedder.load_model()
 
     async def retrieve_arms(self, query: str) -> dict[str, list[dict[str, Any]]]:
         """Candidates per arm at that arm's depth, best first."""

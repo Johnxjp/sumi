@@ -1,22 +1,56 @@
 from types import SimpleNamespace
 from unittest import mock
 
-from src.agent import Agent
+import pytest
+
+from src.agent import Agent, TextDelta, ToolCall
 
 
-def make_tool_call(call_id: str, name: str, arguments: str) -> SimpleNamespace:
-    return SimpleNamespace(
-        id=call_id, function=SimpleNamespace(name=name, arguments=arguments)
-    )
-
-
-def make_response(
-    finish_reason: str, content: str | None = None, tool_calls: list | None = None
+def make_tool_call_delta(
+    index: int,
+    call_id: str | None = None,
+    name: str | None = None,
+    arguments: str | None = None,
 ) -> SimpleNamespace:
-    message = SimpleNamespace(content=content, reasoning=None, tool_calls=tool_calls)
     return SimpleNamespace(
-        choices=[SimpleNamespace(finish_reason=finish_reason, message=message)]
+        index=index,
+        id=call_id,
+        function=SimpleNamespace(name=name, arguments=arguments),
     )
+
+
+def make_chunk(
+    content: str | None = None,
+    reasoning: str | None = None,
+    tool_calls: list | None = None,
+    finish_reason: str | None = None,
+    error: SimpleNamespace | None = None,
+) -> SimpleNamespace:
+    delta = SimpleNamespace(content=content, reasoning=reasoning, tool_calls=tool_calls)
+    return SimpleNamespace(
+        choices=[SimpleNamespace(delta=delta, finish_reason=finish_reason)], error=error
+    )
+
+
+USAGE_CHUNK = SimpleNamespace(choices=[], error=None)
+
+
+def make_agent(turns: list[list[SimpleNamespace]], verbose: bool = False) -> Agent:
+    """An agent whose model replies with the given streamed turns, one chunk list per call."""
+    responses = iter(turns)
+    agent = Agent(api_key="key", model="model", system_prompt="sys", verbose=verbose)
+    agent.client = SimpleNamespace(
+        chat=SimpleNamespace(send=lambda **kwargs: iter(next(responses)))
+    )
+    return agent
+
+
+def tool_messages(agent: Agent) -> list[dict]:
+    return [
+        m
+        for m in agent.conversation_history
+        if isinstance(m, dict) and m.get("role") == "tool"
+    ]
 
 
 @mock.patch("src.agent.summarise_tool_result", autospec=True)
@@ -26,32 +60,27 @@ def test_run_replaces_summarised_results_once_the_turn_ends(run_tool, summarise)
     summarise.side_effect = lambda name, arguments, result: (
         "stub" if name == "search_notes" else None
     )
-    responses = iter(
+    agent = make_agent(
         [
-            make_response(
-                "tool_calls",
-                tool_calls=[
-                    make_tool_call("c1", "search_notes", '{"query": "q"}'),
-                    make_tool_call("c2", "read_file", '{"filename": "a.md"}'),
-                    make_tool_call("c3", "grep", '{"pattern": "x"}'),
-                ],
-            ),
-            make_response("stop", content="answer"),
+            [
+                make_chunk(
+                    tool_calls=[
+                        make_tool_call_delta(0, "c1", "search_notes", '{"query": "q"}'),
+                        make_tool_call_delta(
+                            1, "c2", "read_file", '{"filename": "a.md"}'
+                        ),
+                        make_tool_call_delta(2, "c3", "grep", '{"pattern": "x"}'),
+                    ],
+                    finish_reason="tool_calls",
+                )
+            ],
+            [make_chunk(content="answer", finish_reason="stop")],
         ]
-    )
-    agent = Agent(api_key="key", model="model", system_prompt="sys")
-    agent.client = SimpleNamespace(
-        chat=SimpleNamespace(send=lambda **kwargs: next(responses))
     )
 
     assert agent.run("question", tools=[]) == "answer"
 
-    tool_messages = [
-        m
-        for m in agent.conversation_history
-        if isinstance(m, dict) and m.get("role") == "tool"
-    ]
-    assert tool_messages == [
+    assert tool_messages(agent) == [
         {"role": "tool", "tool_call_id": "c1", "content": "stub"},
         {"role": "tool", "tool_call_id": "c2", "content": "note text"},
         {"role": "tool", "tool_call_id": "c3", "content": "Error: boom"},
@@ -67,19 +96,171 @@ def test_run_replaces_summarised_results_once_the_turn_ends(run_tool, summarise)
 def test_run_prints_nothing_when_not_verbose(run_tool, summarise, capsys):
     run_tool.return_value = (True, "note text")
     summarise.return_value = None
-    responses = iter(
+    agent = make_agent(
         [
-            make_response(
-                "tool_calls",
-                tool_calls=[make_tool_call("c1", "read_file", '{"filename": "a.md"}')],
-            ),
-            make_response("stop", content="answer"),
-        ]
-    )
-    agent = Agent(api_key="key", model="model", system_prompt="sys", verbose=False)
-    agent.client = SimpleNamespace(
-        chat=SimpleNamespace(send=lambda **kwargs: next(responses))
+            [
+                make_chunk(
+                    tool_calls=[
+                        make_tool_call_delta(
+                            0, "c1", "read_file", '{"filename": "a.md"}'
+                        )
+                    ],
+                    finish_reason="tool_calls",
+                )
+            ],
+            [make_chunk(content="answer", finish_reason="stop")],
+        ],
+        verbose=False,
     )
 
     assert agent.run("question", tools=[]) == "answer"
     assert capsys.readouterr().out == ""
+
+
+@mock.patch("src.agent.summarise_tool_result", autospec=True)
+@mock.patch("src.agent.run_tool", autospec=True)
+def test_stream_yields_text_as_it_arrives_and_each_tool_call_before_it_runs(
+    run_tool, summarise
+):
+    run_tool.return_value = (True, "result")
+    summarise.return_value = None
+    events: list = []
+    run_tool.side_effect = lambda name, arguments: (
+        events.append(f"ran {name}")
+        or (
+            True,
+            "result",
+        )
+    )
+    agent = make_agent(
+        [
+            [
+                make_chunk(reasoning="thinking "),
+                make_chunk(
+                    content="Let me look. ",
+                    tool_calls=[make_tool_call_delta(0, "c1", "search_notes", '{"que')],
+                ),
+                make_chunk(
+                    tool_calls=[
+                        make_tool_call_delta(0, arguments='ry": "q"}'),
+                        make_tool_call_delta(1, "c2", "grep", '{"pattern": "x"}'),
+                    ],
+                    finish_reason="tool_calls",
+                ),
+                USAGE_CHUNK,
+            ],
+            [
+                make_chunk(content="ans"),
+                make_chunk(content="wer", finish_reason="stop"),
+                USAGE_CHUNK,
+            ],
+        ]
+    )
+
+    for event in agent.stream("question", tools=[]):
+        events.append(event)  # noqa: PERF402 - run_tool appends to `events` too, so order must be observed live
+
+    assert events == [
+        TextDelta("Let me look. "),
+        ToolCall("search_notes", '{"query": "q"}'),
+        "ran search_notes",
+        ToolCall("grep", '{"pattern": "x"}'),
+        "ran grep",
+        TextDelta("ans"),
+        TextDelta("wer"),
+    ]
+    assert agent.conversation_history[2] == {
+        "role": "assistant",
+        "content": "Let me look. ",
+        "reasoning": "thinking ",
+        "tool_calls": [
+            {
+                "id": "c1",
+                "type": "function",
+                "function": {"name": "search_notes", "arguments": '{"query": "q"}'},
+            },
+            {
+                "id": "c2",
+                "type": "function",
+                "function": {"name": "grep", "arguments": '{"pattern": "x"}'},
+            },
+        ],
+    }
+    assert agent.conversation_history[-1] == {"role": "assistant", "content": "answer"}
+
+
+@mock.patch("src.agent.summarise_tool_result", autospec=True)
+@mock.patch("src.agent.run_tool", autospec=True)
+def test_run_returns_only_the_text_after_the_last_tool_call(run_tool, summarise):
+    run_tool.return_value = (True, "result")
+    summarise.return_value = None
+    agent = make_agent(
+        [
+            [
+                make_chunk(
+                    content="Let me look.",
+                    tool_calls=[make_tool_call_delta(0, "c1", "grep", "{}")],
+                    finish_reason="tool_calls",
+                )
+            ],
+            [make_chunk(content="answer", finish_reason="stop")],
+        ]
+    )
+
+    assert agent.run("question", tools=[]) == "answer"
+
+
+def test_stream_drops_the_exchange_from_history_when_the_model_fails():
+    agent = Agent(api_key="key", model="model", system_prompt="sys")
+    agent.conversation_history.append({"role": "user", "content": "earlier"})
+    history_before = list(agent.conversation_history)
+
+    def fail(**kwargs):
+        raise ConnectionError("down")
+
+    agent.client = SimpleNamespace(chat=SimpleNamespace(send=fail))
+
+    with pytest.raises(ConnectionError):
+        list(agent.stream("question", tools=[]))
+
+    assert agent.conversation_history == history_before
+
+
+def test_stream_raises_when_a_chunk_carries_an_error():
+    agent = make_agent(
+        [
+            [
+                make_chunk(content="partial"),
+                make_chunk(error=SimpleNamespace(code=429, message="rate limited")),
+            ]
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="rate limited"):
+        list(agent.stream("question", tools=[]))
+
+    assert agent.conversation_history == [{"role": "system", "content": "sys"}]
+
+
+def test_stream_compacts_history_when_the_reply_is_cut_off():
+    agent = make_agent(
+        [
+            [make_chunk(content="too long", finish_reason="length")],
+            [make_chunk(content="answer", finish_reason="stop")],
+        ]
+    )
+    for i in range(6):
+        agent.conversation_history.append({"role": "user", "content": f"old {i}"})
+
+    events = list(agent.stream("question", tools=[]))
+
+    assert events == [TextDelta("too long"), TextDelta("answer")]
+    assert agent.conversation_history == [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "old 2"},
+        {"role": "user", "content": "old 3"},
+        {"role": "user", "content": "old 4"},
+        {"role": "user", "content": "old 5"},
+        {"role": "user", "content": "question"},
+        {"role": "assistant", "content": "answer"},
+    ]
