@@ -422,4 +422,6 @@ def render_page(page: Mapping[str, object], body: str, property_lines: str = "")
     if property_lines:
         parts.extend([property_lines, ""])
     parts.append(body)
-    return "\n".join(parts).rstrip() + "\n"
+    # Only newlines are trimmed: the export ends a quote with a "> " line whose
+    # trailing space is part of the text the judgments were hashed from.
+    return "\n".join(parts).rstrip("\n") + "\n"
