@@ -7,9 +7,12 @@ datasets, why the shipped configuration was chosen — read
 
 ## The parts
 
-Five loosely coupled pieces share one Postgres database and one notes
-directory (`data/notion-export-markdown` at the repo root, configurable as
-`data_dir`).
+Six loosely coupled pieces share one Postgres database and one notes
+directory (`data_dir` at the repo root). Which directory that is, is
+mid-migration: `data_dir` now defaults to `data/notion-mirror`, the folder the
+Notion sync writes, while the hand-made export in `data/notion-export-markdown`
+is what the tables the shipped search reads were built from. Until the first
+sync has run and been checked, point `DATA_DIR` at the export.
 
 **1. Agent** — `src/agent.py` + `src/tools/`, reached through two front ends.
 `Agent.stream()` runs the OpenRouter tool-calling loop with streaming on and
@@ -28,17 +31,21 @@ notes directory: read a file, list a directory, ripgrep search — all sandboxed
 to `data_dir`. Its `search_notes` tool (`src/tools/search.py`, registered
 by `src/bootstrap.py`) calls `src/retrieval/retrieve.py:retrieve()` at the
 shipped configuration's `top_k` (10, from `src/retrieval/search_config.py`;
-the model cannot change it) and returns each chunk as `{rank, chunk_id, source, title, text}`,
-which `src/tools/core.py` serialises to JSON for the model. The tool
+the model cannot change it) and returns each chunk as
+`{rank, chunk_id, page_id, path, title, text}`,
+which `src/tools/core.py` serialises to JSON for the model. `page_id` and
+`path` are separate fields because a chunk's `source` column holds a Notion
+page id once notes come from the sync, and a page id is not something
+`read_file` can open; `path` is the note's file, read from chunk metadata. The tool
 description says when to use it (questions, information found by similarity)
 rather than `grep` (specific terms in a title or note), and how to phrase the
 query: with the words the note itself would contain, dropping words that only
 describe the request. The system prompt adds the conversation behaviour: work
 out what the user actually wants before searching, split a multi-part request
 into several searches, say how the request was interpreted, and call
-`read_file` on a chunk's `source` for the whole note. Once a turn ends, each `search_notes` result in
+`read_file` on a chunk's `path` for the whole note. Once a turn ends, each `search_notes` result in
 the history is replaced by a stub (the query, then every chunk's rank, title
-and source path), so ten chunks of text are not re-sent on every later call;
+and path), so ten chunks of text are not re-sent on every later call;
 a tool opts in by passing a `summarise` function to `register_tool`, and only
 `search_notes` does. There is no relevance cut-off: every eval number
 is measured at an unthresholded top 10, and the fused score measures how many
@@ -52,25 +59,45 @@ allowlist and registers them; `src/tools/gmail.py` applies that to a locally
 run workspace-mcp server. If the server is not running the REPL runs with the
 notes tools only. Detail and history: `docs/mcp-integration.md`.
 
-**2. Retrieval pipeline** — `src/retrieval/`. Ingestion
-(`scripts/ingest.py`) is `cleaner.clean_text` → `chunker.chunk_text`
-(2,000-char max, 200 min, 50 overlap) → an `Embedder` → an `Indexer`. Query
-time (`retrieve.py`) runs the arms declared in `search_config.ACTIVE_CONFIG`
-concurrently — dense arms over pgvector, a lexical arm over Postgres
-full-text search (`lexical.py`) — and merges them with reciprocal rank fusion
-(`fusion.py`). `scripts/search.py` is the command-line front end.
+**2. Retrieval pipeline** — `src/retrieval/`. Ingestion is
+`cleaner.clean_text` → `chunker.chunk_text` (2,000-char max, 200 min, 50
+overlap) → an `Embedder` → an `Indexer`. Two things feed it:
+`scripts/ingest.py` for a plain folder of files (`data/mem-export`), and the
+Notion sync below for the notes themselves. Query time (`retrieve.py`) runs
+the arms declared in `search_config.ACTIVE_CONFIG` concurrently — dense arms
+over pgvector, a lexical arm over Postgres full-text search (`lexical.py`) —
+and merges them with reciprocal rank fusion (`fusion.py`).
+`scripts/search.py` is the command-line front end.
 
-**3. Annotation tool** — `src/annotation/` + `static/`. A FastAPI backend and
+**3. Notion sync** — `src/notion/`, run by `scripts/sync.py`. **Built, not yet
+switched on**: it writes its own tables, and `ACTIVE_CONFIG` still reads the
+ones built from the hand-made export. It lists every page the integration can
+see through Notion's REST API (`client.py`), fetches each new or edited page
+as markdown in one request, rewrites that markdown into the shape the export
+used (`markdown.py` and `properties.py`, the normaliser), re-indexes its
+chunks in every table of `search_config.SYNC_CONFIG`, and regenerates the
+notes folder on disk from the database at the end of every run (`mirror.py`).
+`sync.py` is the job and its state tables. Chunks are keyed by Notion page id
+rather than by file path, so a rename or a move no longer orphans them, and
+each one carries the note's title, its file in the mirror, created and last
+edited times, database properties and page URL.
+`scripts/check_export_fidelity.py` measures the normaliser against the export,
+which is the gate everything else waits on; `scripts/migrate_eval_ids.py`
+carries the human judgments over to the new ids. Detail:
+`docs/designs/notion-sync.md`; what is left to do:
+`docs/plans/active/notion-sync.md`.
+
+**4. Annotation tool** — `src/annotation/` + `static/`. A FastAPI backend and
 one vanilla-JS page for grading how relevant a chunk is to a query (0/1/2),
 blind to which retriever returned it. Produces the human judgments the evals
 score against. Detail: `docs/annotation.md`.
 
-**4. Evals** — `evals/`. `generate_notes_sample.py` and `generate_queries.py`
+**5. Evals** — `evals/`. `generate_notes_sample.py` and `generate_queries.py`
 build the synthetic query set with an LLM; `evals/retrieval/` is the harness
 that runs a retrieval configuration over both query sets, records the run and
 compares runs. Detail: `docs/retrieval/retrieval_overview.md`.
 
-**5. Shared plumbing** — `src/config.py` (settings), `src/paths.py`
+**6. Shared plumbing** — `src/config.py` (settings), `src/paths.py`
 (filesystem layout: `REPO_ROOT`, `DATA_DIR`, `ANNOTATIONS_PATH` — the only
 place these are computed).
 
@@ -86,16 +113,36 @@ One table per embedding model, all created by `ensure_schema()` in
 | `chunks_fts` | text + title as a `tsvector`, copied from `chunks_qwen` by `scripts/build_fts.py` | `fts` arm |
 | `chunks_qwen_title` | Qwen vectors of title-prefixed chunks | measured, not used |
 | `chunks` | Gemini vectors, older chunking | **stale — never use** |
+| `chunks_qwen_notion` | the same, filled by the Notion sync | `SYNC_CONFIG`, not shipped yet |
+| `chunks_bge_m3_notion` | the same, filled by the Notion sync | `SYNC_CONFIG`, not shipped yet |
+| `chunks_fts_notion` | the same, filled by the Notion sync | `SYNC_CONFIG`, not shipped yet |
+| `notion_objects` | one row per Notion page, data source and database: title, parent, path, times, properties, and the page's normalised text | the sync; the mirror is written from it |
+| `notion_sync_runs` | one row per sync run: mode, times, status, counts | the sync's watermark, the REPL's staleness line |
 
-Every table stores the same chunks under the same ids,
-`"{source}#{chunk_index}"`. Re-running ingest upserts in place, fusion can
+Every table stores the same chunks under the same ids, and the id scheme
+depends on which set of tables. The export-built tables use
+`"{file path}#{chunk_index}"`; the `_notion` tables use
+`"{32-hex Notion page id}#{chunk_index}"`, which survives a note being renamed
+or moved. **The two schemes must never meet in one table** — nothing but the
+sync writes the `_notion` tables, and `scripts/ingest.py` must never be
+pointed at them — because fusion deduplicates by id and would otherwise count
+one chunk twice. Within a set, re-running upserts in place, fusion can
 deduplicate across arms by id, and a human judgment recorded against an id
-applies to that chunk in every table. This is the invariant most of the system
-rests on; `build_arm_indexer` enforces its query-time half by refusing to pair
-an embedder with a table built by a different embedder.
+applies to that chunk in every table. `build_arm_indexer` enforces the
+query-time half by refusing to pair an embedder with a table built by a
+different embedder; the `_notion` names keep the prefixes it checks.
 
-Each chunk carries one piece of metadata: the note title. Nothing else
-(dates, tags, folder) is indexed — see `docs/retrieval/retrieval_improvements.md`.
+Chunks in the export-built tables carry one piece of metadata, the note title.
+Chunks the sync writes carry the title, the note's `path` inside the mirror
+(what `read_file` takes), `created_time`, `last_edited_time`, the page `url`
+and its database `properties`. Nothing reads the new keys yet — using them for
+ranking is a separate experiment, see
+`docs/retrieval/retrieval_improvements.md`.
+
+`SYNC_CONFIG` in `src/retrieval/search_config.py` declares the three `_notion`
+arms; `ACTIVE_CONFIG`, what ships, still declares the export-built ones.
+Switching is one line, and waits on the fidelity check in
+`docs/plans/active/notion-sync.md`.
 
 ## Embedders
 
@@ -114,13 +161,16 @@ time while leaving the stored text — and therefore the ids — untouched.
 Three objects, kept separate on purpose:
 
 - `src/config.py` → `app_config` (pydantic-settings, reads `.env`): data dir,
-  OpenRouter and Gemini keys, `DATABASE_URL`, BreadBowl credentials. It sets
-  `extra="forbid"`, so **every variable in `.env` must have a field** — an
-  unknown variable breaks every import of `app_config`.
+  OpenRouter and Gemini keys, `DATABASE_URL`, `NOTION_TOKEN` (the read-only
+  Notion integration secret the sync needs; empty means the sync refuses to
+  run), BreadBowl credentials. It sets `extra="forbid"`, so **every variable
+  in `.env` must have a field** — an unknown variable breaks every import of
+  `app_config`.
 - `evals/config.py` (pydantic-settings, reads `.env`): model, temperature and
   concurrency for query generation.
 - Plain Python, no environment variables: `src/retrieval/search_config.py`
-  (the arms and fusion settings; `ACTIVE_CONFIG` is what ships) and
-  `src/annotation/config.py` (the retrievers the annotation UI pools).
+  (the arms and fusion settings; `ACTIVE_CONFIG` is what ships, `SYNC_CONFIG`
+  is what the Notion sync fills) and `src/annotation/config.py` (the
+  retrievers the annotation UI pools).
 
 `.env` and `secrets/` are gitignored.

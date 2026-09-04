@@ -16,6 +16,8 @@ hybrid retrieval stack over pgvector (two embedding models plus a lexical
 index, fused); a blind relevance-labelling UI; and an evaluation harness
 that picks the retrieval configuration. The agent's `search_notes` tool
 calls the retrieval stack; the answers it produces are not measured yet.
+A job that syncs the notes straight from Notion, replacing the hand-made
+export, is built but not switched on: `docs/plans/active/notion-sync.md`.
 
 ## Repository outline
 
@@ -32,11 +34,12 @@ sumi/
     ├── src/agent.py, src/tools/   OpenRouter tool-calling agent (an event stream); file, search + Gmail (MCP) tools
     ├── src/chat/           FastAPI backend of the web chat: streams agent events as server-sent events
     ├── src/mcp_client.py   generic client for any streamable-HTTP MCP server
+    ├── src/notion/         the sync: Notion REST client, markdown normaliser, mirror folder, the job itself
     ├── src/retrieval/      clean → chunk → embed → pgvector; hybrid search + RRF fusion
     ├── src/annotation/     FastAPI backend of the labelling UI (page in static/)
     ├── src/config.py       app settings from .env · src/paths.py: REPO_ROOT, DATA_DIR
     ├── evals/              query generation; evals/retrieval/ is the eval harness
-    ├── scripts/            ingest, build_fts, search, MCP smoke scripts
+    ├── scripts/            sync, ingest, build_fts, search, export-fidelity, eval-id migration, MCP smoke scripts
     └── tests/              pytest; `postgres` marker for tests needing a local DB
 ```
 
@@ -59,7 +62,8 @@ so they only run with `-m` from there.
 - Install, test, lint: `uv sync` · `uv run pytest` · `uv run ruff check . --fix && uv run ruff format .`
 - Agent REPL: `uv run main.py` (Gmail tools need `./scripts/run_gmail_mcp.sh` running first)
 - Web chat: `uv run uvicorn src.chat.app:app --port 8766`, then from `sumi-frontend/`: `pnpm dev` (→ http://localhost:3000). Frontend checks: `pnpm test` · `pnpm lint` · `pnpm build`. Detail: `docs/designs/chat-ui.md`
-- Ingest, then build the lexical index: `uv run python -m scripts.ingest --embedder qwen` (and `bge-m3`), then `uv run python -m scripts.build_fts`
+- Sync the notes from Notion (built, not switched on yet — see `docs/plans/active/notion-sync.md`): `uv run python -m scripts.sync` · `--full` · `--dry-run` · `--limit 20` · `--mirror-only`. Needs `NOTION_TOKEN`. Detail: `docs/designs/notion-sync.md`
+- Ingest a folder that is not a Notion workspace (`data/mem-export`), then build the lexical index: `uv run python -m scripts.ingest --embedder qwen` (and `bge-m3`), then `uv run python -m scripts.build_fts`
 - Search: `uv run python -m scripts.search "your query"`
 - Retrieval evals: `uv run python -m evals.retrieval.selftest` · `run <experiment>` · `compare` · `diagnose <run_id>`
 - Annotation UI: `uv run uvicorn src.annotation.app:app --reload --port 8765`
@@ -72,6 +76,10 @@ so they only run with `-m` from there.
 - Chunk ids are `"{source}#{chunk_index}"` and identical in every table. Fusion
   deduplicates on them and eval judgments join on them; `build_arm_indexer`
   refuses an embedder paired with another embedder's table for the same reason.
+  Two id schemes exist and must never meet in one table: the export-built
+  tables key on the file path, the `_notion` tables on the Notion page id.
+  Only `scripts/sync.py` writes the `_notion` tables; never point
+  `scripts/ingest.py` at them.
 - The `chunks` table (Gemini, older chunking) is stale. Never read from it.
 - Never regenerate the train/val split (`make_split --force`): every recorded
   eval run becomes incomparable. Eval numbers are floors — an unlabelled result
