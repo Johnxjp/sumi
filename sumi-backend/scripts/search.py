@@ -16,9 +16,12 @@ async def main() -> None:
 
     results = await retrieve(args.query, top_k=args.top_k)
     for rank, row in enumerate(results, start=1):
-        title = (row.get("metadata") or {}).get("title", "")
+        metadata = row.get("metadata") or {}
+        title = metadata.get("title", "")
+        path = metadata.get("path") or row["source"]
         snippet = " ".join(row["text"].split())[:SNIPPET_CHARS]
-        print(f"{rank:>2}. {row['score']:.4f}  {row['source']}  ({title})")
+        print(f"{rank:>2}. {row['score']:.4f}  {title}")
+        print(f"    {path}")
         print(f"    {snippet}\n")
 
 

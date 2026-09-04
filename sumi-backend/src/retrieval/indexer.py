@@ -1,6 +1,7 @@
 """Stores that index and search embedded chunks: pgvector and legacy BreadBowl."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Collection
 from typing import Any
 
 import psycopg
@@ -29,6 +30,59 @@ class Indexer(ABC):
     @abstractmethod
     def search(self, query: str, top_k: int | None = None) -> list[dict[str, Any]]:
         raise NotImplementedError("Subclasses must implement the search method.")
+
+
+class PgChunkTable:
+    """Row maintenance shared by every Postgres chunk table.
+
+    Every chunk table holds `{id, text, source, metadata}` for the same
+    chunks, so the sync keeps a page's rows in step the same way in each one.
+    A page is one `source`; its chunks are that source's rows.
+    """
+
+    database_url: str
+    table: str
+
+    async def delete_by_source(self, source: str) -> int:
+        """Remove every chunk of one page. Returns how many rows went."""
+        async with await psycopg.AsyncConnection.connect(self.database_url) as conn:
+            cursor = await conn.execute(
+                sql.SQL("DELETE FROM {} WHERE source = %s").format(
+                    sql.Identifier(self.table)
+                ),
+                (source,),
+            )
+            return cursor.rowcount
+
+    async def delete_source_except(self, source: str, keep_ids: Collection[str]) -> int:
+        """Drop the chunks a re-indexed page no longer has.
+
+        Called after upserting the page's new chunks, so the page is never
+        without chunks and a page that shrank leaves no orphans behind.
+        """
+        async with await psycopg.AsyncConnection.connect(self.database_url) as conn:
+            cursor = await conn.execute(
+                sql.SQL(
+                    "DELETE FROM {} WHERE source = %s AND NOT (id = ANY(%s))"
+                ).format(sql.Identifier(self.table)),
+                (source, list(keep_ids)),
+            )
+            return cursor.rowcount
+
+    async def update_metadata(self, source: str, metadata: dict[str, Any]) -> int:
+        """Merge keys into every chunk of one page, leaving text and vectors alone.
+
+        This is what a moved or renamed page needs: its path changed, its
+        words did not, so there is nothing to re-embed.
+        """
+        async with await psycopg.AsyncConnection.connect(self.database_url) as conn:
+            cursor = await conn.execute(
+                sql.SQL(
+                    "UPDATE {} SET metadata = metadata || %s WHERE source = %s"
+                ).format(sql.Identifier(self.table)),
+                (Jsonb(metadata), source),
+            )
+            return cursor.rowcount
 
 
 class BreadBowlIndexer(Indexer):
@@ -121,7 +175,7 @@ class BreadBowlIndexer(Indexer):
         )
 
 
-class PgVectorIndexer(Indexer):
+class PgVectorIndexer(PgChunkTable, Indexer):
     """Stores chunk embeddings in Postgres with pgvector, embedding client-side."""
 
     def __init__(

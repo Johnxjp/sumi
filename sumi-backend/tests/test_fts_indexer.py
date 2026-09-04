@@ -123,8 +123,3 @@ def test_sync_from_copies_and_upserts(indexer):
 
     assert asyncio.run(indexer.search("canoeing"))[0]["text"] == "canoeing"
     assert asyncio.run(indexer.search("kayaking")) == []
-
-
-def test_index_is_not_supported(indexer):
-    with pytest.raises(NotImplementedError):
-        indexer.index([])

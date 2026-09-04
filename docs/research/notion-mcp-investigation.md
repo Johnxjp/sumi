@@ -267,6 +267,10 @@ Each item was exercised in this session, not read from a brochure.
   the natural path for a **sync**: list pages (paginated), read blocks, filter
   by `last_edited_time` for incremental updates. A full pull of 2,329 pages is
   a matter of minutes at that rate.
+- The REST API can also return a whole page as markdown in one request
+  (`GET /v1/pages/{id}/markdown`, added 2026-02-26), so reading a page's
+  blocks one level at a time is no longer the only REST path to its text —
+  which is why the sync design needs no block-tree renderer.
 
 ## Options
 
@@ -295,7 +299,8 @@ B1 and B2 from "possible next steps" into data that exists. The invariant to
 protect is chunk ids: judgments join on them, so the migration must either
 keep `source` as the export-style path or remap `data/annotations.json` once,
 then pass `evals.retrieval.selftest`. The collected design notes for this
-option are in `docs/todos/notion-sync.md`.
+option are in `docs/plans/active/notion-sync.md`, and the design they became
+is `docs/designs/notion-sync.md`.
 
 A should be revisited only if the workspace gains Notion AI. The method in
 this document (same queries, note-level, page-id mapping) is enough to score
