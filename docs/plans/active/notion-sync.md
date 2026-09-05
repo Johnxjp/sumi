@@ -1,9 +1,9 @@
 # Sync the corpus from Notion instead of a manual export
 
-Status: designed and phases 1–3 built; not yet switched on. `ACTIVE_CONFIG`,
-the search configuration that ships, still reads the tables built from the
-hand-made export. Switching it needs a Notion integration token, the export
-folder and a running Postgres, which only the owner's machine has.
+Status: phases 1–3 done and switched on since 2026-09-05. Every search now
+reads the notes synced from Notion; the tables built from the hand-made export
+are kept, frozen, as the corpus the human relevance judgments were made on.
+Phase 4, dropping the two chunk tables nothing reads, is left.
 
 The design is `docs/designs/notion-sync.md`. It is the single source of truth
 for how the sync works and why; this note only tracks what is done.
@@ -34,11 +34,12 @@ for how the sync works and why; this note only tracks what is done.
 
 - `scripts.sync --full` indexes the connected workspace from empty tables;
   `scripts.sync` picks up a page edited a minute earlier and drops a page
-  moved to trash, both within one run. **Done**, except that the integration
-  cannot yet see every page: the first full sync found 2,130 of the export's
-  2,329, missing all of Scratchpad and Knowledge Centre.
+  moved to trash, both within one run. **Done.** The corpus is complete: of the
+  export's 2,329 notes, the 281 the sync does not hold were checked against
+  Notion one by one — 265 are in the trash, 16 are databases rather than pages,
+  and none were invisible to the integration.
 - Chunks carry title, path, created and last edited time, database properties
   and page URL. **Done.**
 - `ACTIVE_CONFIG` reads the synced tables and the eval experiments read the
-  frozen ones, `docs/architecture.md` says so, and this note moves to
-  `docs/plans/completed/`.
+  frozen ones, `docs/architecture.md` says so. **Done 2026-09-05.**
+- Phase 4 is finished and this note moves to `docs/plans/completed/`.

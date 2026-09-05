@@ -77,9 +77,9 @@ over pgvector, a lexical arm over Postgres full-text search (`lexical.py`) —
 and merges them with reciprocal rank fusion (`fusion.py`).
 `scripts/search.py` is the command-line front end.
 
-**3. Notion sync** — `src/notion/`, run by `scripts/sync.py`. **Built, not yet
-switched on**: it writes its own tables, and `ACTIVE_CONFIG` still reads the
-ones built from the hand-made export. It lists every page the integration can
+**3. Notion sync** — `src/notion/`, run by `scripts/sync.py`. This is where
+the notes come from: every search reads the tables it fills. It lists every
+page the integration can
 see through Notion's REST API (`client.py`), fetches each new or edited page
 as markdown in one request, rewrites that markdown into the shape the export
 used (`markdown.py` and `properties.py`, the normaliser), re-indexes its
@@ -163,10 +163,10 @@ and its database `properties`. Nothing reads the new keys yet — using them for
 ranking is a separate experiment, see
 `docs/retrieval/retrieval_improvements.md`.
 
-`SYNC_CONFIG` in `src/retrieval/search_config.py` declares the three `_notion`
-arms; `ACTIVE_CONFIG`, what ships, still declares the export-built ones.
-Switching is one line, and waits on the fidelity check in
-`docs/plans/active/notion-sync.md`.
+`src/retrieval/search_config.py` declares both corpora: `SYNC_CONFIG` names
+the three `_notion` arms and is what `ACTIVE_CONFIG` ships, so every search
+reads the synced notes; `FROZEN_EVAL_CONFIG` names the export-built arms, which
+only the eval harness and the annotation tool read.
 
 ## Embedders
 
