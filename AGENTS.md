@@ -64,6 +64,10 @@ uv run python -m evals.retrieval.selftest  # retrieval evals. see script for com
 1. uv run python -m evals.generate_notes_sample
 2. uv run python -m evals.generate_queries
 
+# Freeze an eval corpus (whole documents), then drop queries whose note it lacks
+1. uv run python -m scripts.freeze_eval_corpus
+2. uv run python -m scripts.prune_generated_queries --corpus <corpus dir>
+
 # Build the lexical index:
 1. uv run python -m scripts.ingest --embedder <qwen / bge-m3> 
 2. uv run python -m scripts.build_fts
