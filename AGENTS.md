@@ -1,43 +1,81 @@
 # AGENTS.md
 
-A map of the sumi repository for coding agents.
+Guidelines for agents working in the Sumi codebase.
+Sumi is an agent assisting with search and retrieval over personal notes.
 
-`docs/` is the system of record — a fact that is not in the repository does
-not exist to an agent, so when you learn one, write it into the doc that owns
-the topic rather than into this file or a chat message.
-
-## What sumi is
-
-A RAG system over a personal Notion export (~2,300 notes, ~6,000 chunks).
-
-Today: an agent with filesystem, note-search and read-only Gmail tools,
-used from a terminal REPL or a web chat page that streams its replies; a
-hybrid retrieval stack over pgvector (two embedding models plus a lexical
-index, fused); a blind relevance-labelling UI; and an evaluation harness
-that picks the retrieval configuration. The agent's `search_notes` tool
-calls the retrieval stack; the answers it produces are not measured yet.
-
-## Repository outline
+## Repository Structure
 
 ```
 sumi/
-├── AGENTS.md, CLAUDE.md    this map (CLAUDE.md only includes it)
-├── .claude/settings.json   hook: ruff on every edited .py file
+├── AGENTS.md, CLAUDE.md    Agent guidelines
 ├── docs/                   system of record — index below
-├── data/                   gitignored: notes export, annotations, eval runs, queue
-├── sumi-frontend/          web chat page. Next.js + TypeScript, pnpm. Run pnpm commands from here.
-└── sumi-backend/           all Python code. Python 3.12, uv. Run every uv command from here.
+├── data/                   notes export, annotations, eval runs, queue (gitignored)
+├── sumi-frontend/          Web chat page. Next.js + TypeScript, pnpm. Run pnpm commands from here.
+└── sumi-backend/           Backend server, agent code, retrieval and evals. Python 3.12, uv. Run every uv command from here.
     ├── main.py             terminal REPL entry point
     ├── src/bootstrap.py    system prompt + tool registration, shared by the REPL and the web chat
     ├── src/agent.py, src/tools/   OpenRouter tool-calling agent (an event stream); file, search + Gmail (MCP) tools
     ├── src/chat/           FastAPI backend of the web chat: streams agent events as server-sent events
     ├── src/mcp_client.py   generic client for any streamable-HTTP MCP server
+    ├── src/notion/         the sync: Notion REST client, markdown normaliser, mirror folder, the job itself
     ├── src/retrieval/      clean → chunk → embed → pgvector; hybrid search + RRF fusion
     ├── src/annotation/     FastAPI backend of the labelling UI (page in static/)
+    ├── src/usage.py        logs every search: user question, agent's query, results
     ├── src/config.py       app settings from .env · src/paths.py: REPO_ROOT, DATA_DIR
     ├── evals/              query generation; evals/retrieval/ is the eval harness
-    ├── scripts/            ingest, build_fts, search, MCP smoke scripts
+    ├── scripts/            sync, ingest, build_fts, search, export-fidelity, MCP smoke scripts
     └── tests/              pytest; `postgres` marker for tests needing a local DB
+```
+
+## Commands
+
+### Backend Specific
+Run inside `sumi-backend`
+
+```
+uv sync              # install
+uv run pytest        # test all
+uv run ruff check . --fix && uv run ruff format .  # lint and format
+uv run main.py       # agent repl
+```
+
+### Frontend Specific
+```
+pnpm install     # Install dependencies
+pnpm test        # test
+pnpm lint        # lint
+pnpm build       # Build all packages
+pnpm dev         # Dev server
+```
+
+### Web App
+```
+uv run uvicorn src.chat.app:app --port 8766 # start server. run in sumi-backend
+pnpm dev # start app. (localhost:3000). run in sumi-frontend 
+```
+
+### Scripts
+```
+uv run python -m scripts.sync  # sync notes. Detail: @docs/designs/notion-sync.md
+uv run python -m scripts.search "your query"  # search query
+uv run python -m evals.retrieval.selftest  # retrieval evals. see script for commands
+
+# Generate eval queries
+1. uv run python -m evals.generate_notes_sample
+2. uv run python -m evals.generate_queries
+
+# Freeze an eval corpus (whole documents), then drop queries whose note it lacks
+1. uv run python -m scripts.freeze_eval_corpus
+2. uv run python -m scripts.prune_generated_queries --corpus <corpus dir>
+
+# Build the lexical index:
+1. uv run python -m scripts.ingest --embedder <qwen / bge-m3> 
+2. uv run python -m scripts.build_fts
+```
+
+### Annotation UI
+```
+uv run uvicorn src.annotation.app:app --reload --port 8765  # start app
 ```
 
 ## Docs index
@@ -51,19 +89,6 @@ Documents and when to read them.
 - `docs/testing.md`: what a change must cover, how to run tests, the Postgres fixture.
 - `docs/coding-standards.md`: style rules, and how to explain work to the user.
 
-## Commands
-
-Run from `sumi-backend/`. Scripts and eval modules use absolute `src.` imports,
-so they only run with `-m` from there.
-
-- Install, test, lint: `uv sync` · `uv run pytest` · `uv run ruff check . --fix && uv run ruff format .`
-- Agent REPL: `uv run main.py` (Gmail tools need `./scripts/run_gmail_mcp.sh` running first)
-- Web chat: `uv run uvicorn src.chat.app:app --port 8766`, then from `sumi-frontend/`: `pnpm dev` (→ http://localhost:3000). Frontend checks: `pnpm test` · `pnpm lint` · `pnpm build`. Detail: `docs/designs/chat-ui.md`
-- Ingest, then build the lexical index: `uv run python -m scripts.ingest --embedder qwen` (and `bge-m3`), then `uv run python -m scripts.build_fts`
-- Search: `uv run python -m scripts.search "your query"`
-- Retrieval evals: `uv run python -m evals.retrieval.selftest` · `run <experiment>` · `compare` · `diagnose <run_id>`
-- Annotation UI: `uv run uvicorn src.annotation.app:app --reload --port 8765`
-- Generate eval queries: `uv run python -m evals.generate_notes_sample`, then `uv run python -m evals.generate_queries`
 
 ## Invariants — these break silently
 
@@ -72,6 +97,15 @@ so they only run with `-m` from there.
 - Chunk ids are `"{source}#{chunk_index}"` and identical in every table. Fusion
   deduplicates on them and eval judgments join on them; `build_arm_indexer`
   refuses an embedder paired with another embedder's table for the same reason.
+  Two id schemes exist and must never meet in one table: the export-built
+  tables key on the file path, the `_notion` tables on the Notion page id.
+  Only `scripts/sync.py` writes the `_notion` tables; never point
+  `scripts/ingest.py` at them.
+- The export corpus is frozen: `data/notion-export-markdown` and the
+  `chunks_qwen`, `chunks_bge_m3` and `chunks_fts` tables are what the 171 human
+  judgments were made on. Never re-ingest, edit or delete them — every recorded
+  eval number stops being comparable. Eval experiments read these; the agent
+  reads the `_notion` tables. Judgments are never carried between the two.
 - The `chunks` table (Gemini, older chunking) is stale. Never read from it.
 - Never regenerate the train/val split (`make_split --force`): every recorded
   eval run becomes incomparable. Eval numbers are floors — an unlabelled result
@@ -81,6 +115,7 @@ so they only run with `-m` from there.
 
 ## Working rules
 
+- Backend scripts and eval modules use absolute `src.`
 - Explain plainly: define a term the first time you use it and assume no
   knowledge of project history — in replies, commit messages and PR bodies.
   Full rule: `docs/coding-standards.md`.

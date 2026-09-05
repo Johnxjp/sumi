@@ -27,6 +27,7 @@ from evals.retrieval.qrels import (
 from evals.retrieval.queue import UnjudgedCandidate, append_unjudged
 from evals.retrieval.split import Split, load_split
 from src.annotation.store import normalize_query
+from src.notion.mirror import extract_page_id
 from src.retrieval.retrieve import HybridRetriever
 from src.retrieval.search_config import RetrievalConfig
 
@@ -61,12 +62,16 @@ def build_result_rows(
     for rank, row in enumerate(rows, start=1):
         gain = None if qrel is None else lookup_gain(qrel, row)
         text = row.get("text") or ""
+        metadata = row.get("metadata") or {}
         records.append(
             {
                 "rank": rank,
                 "id": row.get("id"),
                 "source": row.get("source"),
-                "title": (row.get("metadata") or {}).get("title"),
+                # The note's file, so `diagnose` can name a result rather than
+                # printing a page id. Absent on the export-built tables.
+                "path": metadata.get("path"),
+                "title": metadata.get("title"),
                 "score": row.get("score"),
                 "arms": row.get("arms", {}),
                 "gain": gain,
@@ -126,7 +131,16 @@ def find_positive_ranks(
 def score_generated(
     file_query: FileQuery, rows: list[dict[str, Any]]
 ) -> dict[str, float]:
-    hits = [1 if row.get("source") == file_query.source else 0 for row in rows]
+    """A hit is any chunk of the note the query was generated from.
+
+    The note is named by its Notion page id, which is in a chunk's source
+    whichever corpus answered: the frozen export corpus stores a file path
+    ending in the id, the synced corpus stores the id itself.
+    """
+    hits = [
+        1 if extract_page_id(str(row.get("source") or "")) == file_query.source else 0
+        for row in rows
+    ]
     return {
         "file_recall@10": 1.0 if any(hits[:K]) else 0.0,
         "file_mrr@10": compute_mrr(hits, K),
@@ -254,6 +268,11 @@ async def run_experiment(
         "train": aggregate(records, "train"),
         "val": aggregate(records, "val"),
         "unjudged_queued": queued,
+        # Generated queries whose note has no Notion page id, so they can never
+        # be scored as a hit. One exported file is an attachment, not a page.
+        "generated_without_page_id": sum(
+            1 for file_query in file_queries if not file_query.has_page_id
+        ),
     }
     persist_run(runs_dir / run_id, config, metrics, records)
     return metrics

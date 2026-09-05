@@ -3,6 +3,7 @@
 import argparse
 
 from src.bootstrap import build_agent, register_tools
+from src.notion.sync import describe_index_staleness
 from src.tools.registry import registry
 
 
@@ -17,6 +18,9 @@ def main():
     args = parser.parse_args()
 
     print("Hello from sumi-backend!")
+    staleness = describe_index_staleness()
+    if staleness:
+        print(f"[info] {staleness}")
     n_gmail_tools = register_tools()
     if n_gmail_tools:
         print(f"[info] Registered {n_gmail_tools} read-only Gmail tools.")

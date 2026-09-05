@@ -8,10 +8,7 @@ from typing import Any
 from evals.retrieval.metrics import GainScheme, apply_gain
 from src.annotation.pooling import compute_chunk_key
 from src.annotation.store import normalize_query
-
-# Generated queries record the note path as the dataset writer saw it; chunk
-# sources are relative to the notes directory.
-NOTES_PREFIX = "../data/notion-export-markdown/"
+from src.notion.mirror import extract_page_id
 
 
 @dataclass(frozen=True)
@@ -46,10 +43,15 @@ class GradedQuery:
 
 @dataclass(frozen=True)
 class FileQuery:
-    """A generated query and the note it was generated from."""
+    """A generated query and the note it was generated from.
+
+    `source` is what a retrieved chunk's `source` column must equal for the
+    query to count as answered: the note's Notion page id.
+    """
 
     query: str
     source: str
+    has_page_id: bool = True
 
 
 def load_graded_qrels(
@@ -102,11 +104,27 @@ def lookup_gain(qrel: GradedQuery, row: dict[str, Any]) -> int | None:
     return None if chunk_key is None else qrel.gain_by_chunk_key[chunk_key]
 
 
-def load_file_queries(path: Path, prefix: str = NOTES_PREFIX) -> list[FileQuery]:
-    """Read the generated query set, mapping note paths to chunk sources."""
+def load_file_queries(path: Path) -> list[FileQuery]:
+    """Read the generated query set, mapping each note's file name to its page id.
+
+    The queries were generated from the export and record the file they came
+    from. Every such file name ends in the note's 32-character Notion page id,
+    which is what chunks are now keyed by, so no data file has to be rewritten.
+    One exported file is an uploaded attachment rather than a page and has no
+    id; its query keeps the file name, can never match a chunk, and is counted
+    in the run's `generated_without_page_id`.
+    """
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
-    return [
-        FileQuery(query=item["query"], source=item["source_file"].removeprefix(prefix))
-        for item in data["queries"]
-    ]
+    queries = []
+    for item in data["queries"]:
+        source_file = item["source_file"]
+        page_id = extract_page_id(source_file)
+        queries.append(
+            FileQuery(
+                query=item["query"],
+                source=page_id or source_file,
+                has_page_id=bool(page_id),
+            )
+        )
+    return queries

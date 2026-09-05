@@ -1,6 +1,6 @@
 # sumi-backend
 
-Backend for "sumi", a RAG system over a personal Notion export, with a terminal
+Backend for "sumi", a RAG system over a personal Notion workspace, with a terminal
 agent (note search, filesystem and read-only Gmail tools) and a retrieval pipeline
 into pgvector.
 
@@ -49,7 +49,10 @@ or 0 (not relevant).
 
 **Data:**
 
-- Notes come from `../data/notion-export-markdown` (the ingested source, indexed
-  into pgvector via `scripts/ingest.py`).
+- Notes come from the folder `DATA_DIR` points at. The tables the annotation
+  app pools were built from `../data/notion-export-markdown`, a hand-made
+  export, by `scripts/ingest.py`. A sync straight from Notion
+  (`scripts/sync.py`) is built but not switched on — see
+  `../docs/plans/active/notion-sync.md`.
 - Labels are saved to `../data/annotations.json`, keyed by query, including
   per-retriever rank/score provenance for later metrics.

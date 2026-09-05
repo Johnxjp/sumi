@@ -10,7 +10,7 @@ class Settings(BaseSettings):
         extra="forbid",
     )
 
-    data_dir: str = "../data/notion-export-markdown"
+    data_dir: str = "../data/notion-mirror"
     model_name: str = Field(
         default="gpt-4o-mini", description="LLM model identifier from OpenRouter"
     )
@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     embedding_dimensions: int = Field(
         default=768,
         description="Output dimensionality for embeddings. gemini-embedding-2 auto-normalizes truncated dimensions.",
+    )
+    logfire_api_key: str = Field(
+        default="",
+        description="Logfire write token for tracing. Set via LOGFIRE_API_KEY environment variable.",
     )
     breadbowl_api_url: str = Field(
         default="",
@@ -55,9 +59,9 @@ class Settings(BaseSettings):
         default="",
         description="Gmail address the workspace-mcp server acts on. Set via USER_GOOGLE_EMAIL.",
     )
-    logfire_api_key: str = Field(
+    notion_token: str = Field(
         default="",
-        description="Pydantic Logfire write token. Set via LOGFIRE_API_KEY; empty means traces are not sent.",
+        description="Secret of the read-only Notion internal integration the sync uses. Set via NOTION_TOKEN.",
     )
 
 

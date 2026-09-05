@@ -1,8 +1,14 @@
-"""Ingest documents from a data directory into the pgvector index.
+"""Ingest documents from a folder of files into the pgvector index.
 
 Loads .md/.txt files, cleans and chunks them, then embeds and upserts the
-chunks with the chosen embedder. Chunk ids are "{source}#{chunk_index}", so
+chunks with the chosen embedder. Chunk ids are "{file path}#{chunk_index}", so
 re-running upserts in place.
+
+This is the path for a folder that is not a Notion workspace, such as
+`data/mem-export`. Notes from Notion come through `scripts/sync.py` instead,
+which keys chunks by Notion page id rather than by file path. Point this
+script at its own tables: never at the `_notion` ones, or two id schemes end
+up in one table and fusion counts the same chunk twice.
 """
 
 import argparse

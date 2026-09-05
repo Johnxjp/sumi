@@ -9,6 +9,7 @@ from openrouter import OpenRouter
 
 from src.observability import build_genai_messages
 from src.tools.core import run_tool, stringify_tool_result, summarise_tool_result
+from src.usage import current_user_query
 
 
 @dataclass(frozen=True)
@@ -159,6 +160,8 @@ class Agent:
         """
         history_before = len(self.conversation_history)
         self.conversation_history.append({"role": "user", "content": query})
+        # The search tool logs both queries, and only the agent's reaches it.
+        user_query_token = current_user_query.set(query)
         # Tool results with a registered summariser are replaced by its short
         # stand-in once the turn ends, so they are not re-sent on every later call.
         stubs: list[tuple[dict[str, Any], str]] = []
@@ -243,5 +246,6 @@ class Agent:
             del self.conversation_history[history_before:]
             raise
         finally:
+            current_user_query.reset(user_query_token)
             for tool_message, stub in stubs:
                 tool_message["content"] = stub

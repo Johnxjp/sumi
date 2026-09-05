@@ -134,10 +134,62 @@ query ──┬── qwen  (top 50) ──┐
 
 ### Corpus
 
-2,329 `.md`/`.txt` files from the Notion export (`data/notion-export-markdown`),
-5,979 chunks. About a quarter of the notes are recurring templates (Daily
-Check In, End of week check in, Plan for the week); this matters for the
-generated set below.
+An **eval corpus** is the fixed set of notes experiments search. It is frozen
+on purpose: if the notes move under the measurement, a number that changes no
+longer tells you whether the method changed or the material did.
+
+It is a set of **whole documents** — one markdown file per Notion page — not
+chunks. Chunking and embedding are choices applied *to* the corpus, so a new
+chunker can be measured on the same notes. The cost is that a corpus cannot be
+searched as it stands; building chunk tables from it is a step of its own
+(below).
+
+Layout, written by `scripts/freeze_eval_corpus.py`:
+
+```
+data/eval-corpus-2026-09-05/
+    metadata.json     date, source, document count, size, the sync run and the
+                      commit whose normalising rules produced the text
+    corpus/           one .md per page, in the mirror's folder layout
+```
+
+`metadata.json` records the renderer's commit because the same Notion page
+renders differently as the normaliser's rules change; the corpus is only
+reproducible next to the code that wrote it.
+
+Two corpora exist:
+
+| | documents | chunks | what it is for |
+|---|---|---|---|
+| `data/notion-export-markdown` | 2,329 | 5,979 | the hand-made export of 2026-08-09, and what the 171 judgments were made on |
+| `data/eval-corpus-2026-09-05` | 2,131 | 5,653 | frozen from the Notion sync; the current material |
+
+The live synced notes (`data/notion-mirror`) are **not** an eval corpus. Every
+sync rewrites the pages that changed, so anything measured against them drifts.
+
+About a quarter of the notes are recurring templates (Daily Check In, End of
+week check in, Plan for the week); this matters for the generated set below.
+
+### Making and using a frozen corpus
+
+```
+uv run python -m scripts.freeze_eval_corpus                    # writes a dated folder
+uv run python -m scripts.prune_generated_queries \
+    --corpus ../data/eval-corpus-2026-09-05/corpus [--dry-run]
+```
+
+Pruning drops generated queries whose note is not in the corpus — a note
+deleted in Notion can never be retrieved, so its queries would count as misses
+in every run and pull every score down for no reason. The note is matched by
+the Notion page id in its file name, so a note that was renamed or moved is
+still found. The original query file is copied beside the pruned one.
+
+To measure anything on a frozen corpus, build chunk tables from it first, then
+declare a `RetrievalConfig` naming those tables and run an experiment against
+it. Re-chunking is the point of freezing documents rather than chunks — but
+note what it costs: chunk-level judgments are hashed from chunk text, so a new
+chunker orphans them. Document-level ground truth (the generated set) survives
+re-chunking untouched, which is the argument for leaning on it.
 
 ### Judged set (19 queries, 171 judgments)
 

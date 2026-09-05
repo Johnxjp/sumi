@@ -12,6 +12,7 @@ from src.retrieval.search_config import (
     FTS_ARM,
     QWEN_ARM,
     QWEN_TITLE_ARM,
+    SYNC_CONFIG,
     RetrievalConfig,
 )
 
@@ -196,6 +197,19 @@ EXPERIMENTS: dict[str, ExperimentConfig] = {
             "Is the rrf_k optimum below 10? Yes, and this is it: train ndcg@10 "
             "0.712, precision@10 0.233 above every baseline, file-recall@10 "
             "0.710, val 0.825. WINNER — shipped as ACTIVE_CONFIG."
+        ),
+    ),
+    "rrf-3arm-k5-notion": ExperimentConfig(
+        name="rrf-3arm-k5-notion",
+        retrieval=SYNC_CONFIG,
+        notes=(
+            "The shipped configuration, arm for arm, over the tables the Notion "
+            "sync fills instead of the ones built from the hand-made export. Same "
+            "queries, same labels, two corpora: the difference from rrf-3arm-k5 "
+            "measures how much the notes themselves moved on (pages added and "
+            "edited since 2026-08-09) plus judgments whose text no longer exists, "
+            "not a change in how retrieval works. Not run yet - it needs a full "
+            "sync first."
         ),
     ),
     "rrf-3arm-k30": ExperimentConfig(
